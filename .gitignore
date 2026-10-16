@@ -1,0 +1,6 @@
+StudyTrack.xcodeproj/
+build/
+ipa/
+*.ipa
+xcuserdata/
+.DS_Store
