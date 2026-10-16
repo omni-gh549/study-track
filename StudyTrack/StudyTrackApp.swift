@@ -14,6 +14,7 @@ struct StudyTrackApp: App {
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @AppStorage("didSeedSampleData") private var didSeed = false
+    @State private var celebrations = CelebrationCenter()
 
     var body: some View {
         TabView {
@@ -25,7 +26,11 @@ struct RootView: View {
                 .tabItem { Label("Goals", systemImage: "target") }
             HistoryView()
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+            ProfileView()
+                .tabItem { Label("Profile", systemImage: "trophy.fill") }
         }
+        .overlay { CelebrationOverlay(center: celebrations) }
+        .environment(celebrations)
         .task {
             if !didSeed {
                 SampleData.seed(context)

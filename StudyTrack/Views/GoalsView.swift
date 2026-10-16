@@ -6,6 +6,7 @@ struct GoalsView: View {
     @Query(sort: \Goal.createdAt) private var goals: [Goal]
     @Query private var sessions: [StudySession]
     @State private var showingAdd = false
+    @State private var editing: Goal?
 
     var body: some View {
         NavigationStack {
@@ -15,7 +16,10 @@ struct GoalsView: View {
                     if !items.isEmpty {
                         Section(period.title) {
                             ForEach(items) { goal in
-                                GoalRow(goal: goal, progress: goal.progress(in: sessions))
+                                Button { editing = goal } label: {
+                                    GoalRow(goal: goal, progress: goal.progress(in: sessions))
+                                }
+                                .buttonStyle(.plain)
                             }
                             .onDelete { offsets in
                                 for i in offsets { context.delete(items[i]) }
@@ -37,6 +41,7 @@ struct GoalsView: View {
                 }
             }
             .sheet(isPresented: $showingAdd) { GoalFormView() }
+            .sheet(item: $editing) { GoalFormView(goal: $0) }
         }
     }
 }
@@ -80,10 +85,19 @@ struct GoalFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Subject.name) private var subjects: [Subject]
 
-    @State private var title = ""
-    @State private var period: GoalPeriod = .weekly
+    private let goal: Goal?
+    @State private var title: String
+    @State private var period: GoalPeriod
     @State private var subject: Subject?
-    @State private var targetMinutes = 120
+    @State private var targetMinutes: Int
+
+    init(goal: Goal? = nil) {
+        self.goal = goal
+        _title = State(initialValue: goal?.title ?? "")
+        _period = State(initialValue: goal?.period ?? .weekly)
+        _subject = State(initialValue: goal?.subject)
+        _targetMinutes = State(initialValue: goal?.targetMinutes ?? 120)
+    }
 
     var body: some View {
         NavigationStack {
@@ -111,7 +125,7 @@ struct GoalFormView: View {
                     }
                 }
             }
-            .navigationTitle("New Goal")
+            .navigationTitle(goal == nil ? "New Goal" : "Edit Goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -120,8 +134,15 @@ struct GoalFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let name = title.trimmingCharacters(in: .whitespaces)
-                        context.insert(Goal(title: name, targetMinutes: targetMinutes,
-                                            period: period, subject: subject))
+                        if let goal {
+                            goal.title = name
+                            goal.targetMinutes = targetMinutes
+                            goal.period = period
+                            goal.subject = subject
+                        } else {
+                            context.insert(Goal(title: name, targetMinutes: targetMinutes,
+                                                period: period, subject: subject))
+                        }
                         dismiss()
                     }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)

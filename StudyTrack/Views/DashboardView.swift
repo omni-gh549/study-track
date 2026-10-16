@@ -5,6 +5,7 @@ import SwiftUI
 struct DashboardView: View {
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
+    @AppStorage("dailyGoalMinutes") private var fallbackDailyMinutes = 60
     @State private var showingAdd = false
 
     private var calendar: Calendar { .current }
@@ -24,7 +25,7 @@ struct DashboardView: View {
     }
 
     private var dailyTargetMinutes: Int {
-        goals.first { $0.period == .daily && $0.subject == nil }?.targetMinutes ?? 60
+        goals.first { $0.period == .daily && $0.subject == nil }?.targetMinutes ?? fallbackDailyMinutes
     }
 
     private var streak: Int {
@@ -74,6 +75,8 @@ struct DashboardView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     todayCard
+                    LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals).level, streak: streak)
+                    QuestsCard(sessions: sessions)
                     HStack(spacing: 12) {
                         StatTile(title: "Streak", value: "\(streak) \(streak == 1 ? "day" : "days")",
                                  systemImage: "flame.fill", tint: .orange)

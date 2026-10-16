@@ -7,6 +7,7 @@ struct HistoryView: View {
     @State private var search = ""
     @State private var showingAdd = false
     @State private var showingSubjects = false
+    @State private var editing: StudySession?
 
     private struct DayGroup: Identifiable {
         let day: Date
@@ -34,7 +35,12 @@ struct HistoryView: View {
             List {
                 ForEach(groups) { group in
                     Section {
-                        ForEach(group.sessions) { SessionRow(session: $0) }
+                        ForEach(group.sessions) { session in
+                            Button { editing = session } label: {
+                                SessionRow(session: session).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                             .onDelete { offsets in
                                 for i in offsets { context.delete(group.sessions[i]) }
                             }
@@ -67,6 +73,7 @@ struct HistoryView: View {
             }
             .sheet(isPresented: $showingAdd) { SessionFormView() }
             .sheet(isPresented: $showingSubjects) { SubjectsView() }
+            .sheet(item: $editing) { SessionFormView(session: $0) }
         }
     }
 }
