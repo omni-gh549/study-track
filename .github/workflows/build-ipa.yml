@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -54,3 +57,16 @@ jobs:
         with:
           name: build-log
           path: build.log
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep -m1 MARKETING_VERSION project.yml | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VERSION}-build.${{ github.run_number }}"
+          gh release create "$TAG" StudyTrack.ipa \
+            --target "${{ github.sha }}" \
+            --title "StudyTrack ${VERSION} (build ${{ github.run_number }})" \
+            --notes "Unsigned IPA built from ${{ github.sha }}. Sign/sideload with AltStore, Sideloadly or similar." \
+            --prerelease
