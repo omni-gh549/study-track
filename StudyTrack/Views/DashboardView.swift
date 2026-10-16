@@ -6,7 +6,9 @@ struct DashboardView: View {
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
     @AppStorage("dailyGoalMinutes") private var fallbackDailyMinutes = 60
+    @AppStorage("lastBackup") private var lastBackup: Double = 0
     @State private var showingAdd = false
+    @State private var showingSettings = false
 
     private var calendar: Calendar { .current }
 
@@ -68,12 +70,17 @@ struct DashboardView: View {
         return seen.map { (name: $0.key, color: $0.value) }.sorted { $0.name < $1.name }
     }
 
+    private var needsBackup: Bool {
+        sessions.count >= 5 && Date.now.timeIntervalSince1970 - lastBackup > 14 * 86_400
+    }
+
     // MARK: Body
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if needsBackup { backupNudge }
                     todayCard
                     LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals).level, streak: streak)
                     QuestsCard(sessions: sessions)
@@ -96,7 +103,28 @@ struct DashboardView: View {
                 }
             }
             .sheet(isPresented: $showingAdd) { SessionFormView() }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
         }
+    }
+
+    private var backupNudge: some View {
+        Button { showingSettings = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "externaldrive.fill.badge.icloud")
+                    .font(.title2)
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Back up your data").font(.subheadline.weight(.semibold))
+                    Text(lastBackup == 0 ? "You haven't made a backup yet." : "It's been a while since your last backup.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.primary)
+            .card()
+        }
+        .buttonStyle(.plain)
     }
 
     private var todayCard: some View {

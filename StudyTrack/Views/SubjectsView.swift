@@ -7,6 +7,7 @@ struct SubjectsView: View {
     @Query(sort: \Subject.name) private var subjects: [Subject]
     @State private var editing: Subject?
     @State private var showingNew = false
+    @State private var pendingDelete: Subject?
 
     var body: some View {
         NavigationStack {
@@ -30,10 +31,10 @@ struct SubjectsView: View {
                         }
                     }
                     .onDelete { offsets in
-                        for i in offsets { context.delete(subjects[i]) }
+                        if let i = offsets.first { pendingDelete = subjects[i] }
                     }
                 } footer: {
-                    Text("Deleting a subject also deletes its sessions and goals.")
+                    Text("Deleting a subject keeps its sessions (they show as “No subject”) but removes its goals.")
                 }
             }
             .overlay {
@@ -54,6 +55,17 @@ struct SubjectsView: View {
             }
             .sheet(isPresented: $showingNew) { SubjectFormView(subject: nil) }
             .sheet(item: $editing) { SubjectFormView(subject: $0) }
+            .confirmationDialog("Delete this subject?", isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ), titleVisibility: .visible, presenting: pendingDelete) { subject in
+                Button("Delete \(subject.name)", role: .destructive) {
+                    context.delete(subject)
+                    pendingDelete = nil
+                }
+            } message: { subject in
+                Text("\(subject.sessions.count) sessions will be kept without a subject. Its goals will be removed.")
+            }
         }
     }
 }

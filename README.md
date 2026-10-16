@@ -39,7 +39,15 @@ StudyTrack/
 .github/workflows/build-ipa.yml
 ```
 
-Sample data is seeded once on first launch (`RootView`); remove the `.task` there to start empty.
+First launch shows an onboarding screen: pick your subjects, or explore with sample data (also available in Settings).
+
+## Keeping your data safe
+
+- Everything is stored on‑device (SwiftData) and flushed to disk whenever the app leaves the foreground.
+- **Profile › Settings › Back up all data** exports a full `.json` (subjects, sessions, goals) via the share sheet — save it to iCloud Drive / Files. **Restore from backup…** brings it back. The Today tab nags you if you haven't backed up in 2 weeks.
+- Deleting a subject keeps its sessions.
+- **Sideloading caveat:** deleting the app deletes its data. With a free Apple ID the install expires after 7 days — *refresh/re‑sign over the top* (AltStore does this automatically) rather than uninstalling, and keep the bundle ID (`com.studytrack.app`) unchanged.
+- iCloud sync needs a paid developer account (CloudKit entitlement), so it isn't enabled.
 
 ## Building the IPA
 

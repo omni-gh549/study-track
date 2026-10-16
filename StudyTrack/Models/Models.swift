@@ -41,7 +41,8 @@ final class Subject {
     var icon: String = "book.fill"
     var createdAt: Date = Date()
 
-    @Relationship(deleteRule: .cascade, inverse: \StudySession.subject)
+    // Deleting a subject must never wipe study history: sessions are kept and become "No subject".
+    @Relationship(deleteRule: .nullify, inverse: \StudySession.subject)
     var sessions: [StudySession] = []
 
     @Relationship(deleteRule: .cascade, inverse: \Goal.subject)

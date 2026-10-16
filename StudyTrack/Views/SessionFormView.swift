@@ -42,13 +42,17 @@ struct SessionFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Subject") {
+                Section {
                     Picker("Subject", selection: $subject) {
                         Text("None").tag(Subject?.none)
                         ForEach(subjects) { s in
                             Label(s.name, systemImage: s.icon).tag(Optional(s))
                         }
                     }
+                } header: {
+                    Text("Subject")
+                } footer: {
+                    if subjects.isEmpty { Text("No subjects yet. Add some under History › Subjects.") }
                 }
 
                 Section("When") {

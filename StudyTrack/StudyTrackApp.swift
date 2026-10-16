@@ -13,7 +13,9 @@ struct StudyTrackApp: App {
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
-    @AppStorage("didSeedSampleData") private var didSeed = false
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("didOnboard") private var didOnboard = false
+    @State private var showOnboarding = false
     @State private var celebrations = CelebrationCenter()
 
     var body: some View {
@@ -31,11 +33,20 @@ struct RootView: View {
         }
         .overlay { CelebrationOverlay(center: celebrations) }
         .environment(celebrations)
-        .task {
-            if !didSeed {
-                SampleData.seed(context)
-                didSeed = true
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView {
+                didOnboard = true
+                showOnboarding = false
             }
+        }
+        .task {
+            guard !didOnboard else { return }
+            let existing = (try? context.fetchCount(FetchDescriptor<Subject>())) ?? 0
+            if existing == 0 { showOnboarding = true } else { didOnboard = true }
+        }
+        // Flush to disk whenever the app leaves the foreground, so a kill never loses the last edit.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { try? context.save() }
         }
     }
 }

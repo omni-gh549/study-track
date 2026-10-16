@@ -35,10 +35,16 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \StudySession.startDate) private var sessions: [StudySession]
     @Query private var subjects: [Subject]
+    @Query private var goals: [Goal]
 
     @AppStorage("dailyGoalMinutes") private var dailyGoalMinutes = 60
     @AppStorage("remindersOn") private var remindersOn = false
     @AppStorage("reminderMinutes") private var reminderMinutes = 19 * 60
+    @AppStorage("lastBackup") private var lastBackup: Double = 0
+
+    @State private var showingImporter = false
+    @State private var pendingRestore: BackupFile?
+    @State private var restoreFailed = false
 
     @State private var permissionDenied = false
     @State private var confirmReset = false
@@ -54,6 +60,21 @@ struct SettingsView: View {
                 reminderMinutes = (c.hour ?? 19) * 60 + (c.minute ?? 0)
             }
         )
+    }
+
+    private var backupName: String {
+        "StudyTrack-Backup-\(Date.now.formatted(.iso8601.year().month().day())).json"
+    }
+
+    private var backupDocument: BackupDocument {
+        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals)
+        return BackupDocument(data: (try? file.encoded()) ?? Data(), filename: backupName)
+    }
+
+    private var lastBackupText: String {
+        lastBackup == 0
+            ? "You haven't backed up yet."
+            : "Last backup: " + Date(timeIntervalSince1970: lastBackup).formatted(.relative(presentation: .named))
     }
 
     private var csv: String {
@@ -85,6 +106,21 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    ShareLink(item: backupDocument, preview: SharePreview(backupName)) {
+                        Label("Back up all data", systemImage: "externaldrive.badge.icloud")
+                    }
+                    .simultaneousGesture(TapGesture().onEnded { lastBackup = Date.now.timeIntervalSince1970 })
+
+                    Button("Restore from backup…", systemImage: "arrow.counterclockwise") {
+                        showingImporter = true
+                    }
+                } header: {
+                    Text("Backup & restore")
+                } footer: {
+                    Text("\(lastBackupText) Save the file to iCloud Drive or Files — your data otherwise lives only on this phone, and deleting the app erases it.")
+                }
+
                 Section("Data") {
                     ShareLink(item: csv, subject: Text("StudyTrack export")) {
                         Label("Export sessions as CSV", systemImage: "square.and.arrow.up")
@@ -102,7 +138,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "0.2.0")
+                    LabeledContent("Version", value: "0.3.0")
                     Text("XP, levels and badges are calculated from your sessions, so editing or deleting a session updates them too.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -137,6 +173,16 @@ struct SettingsView: View {
             } message: {
                 Text("Enable notifications for StudyTrack in the Settings app to get reminders.")
             }
+            .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
+                guard case .success(let url) = result else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    pendingRestore = try BackupFile.decode(try Data(contentsOf: url))
+                } catch {
+                    restoreFailed = true
+                }
+            }
             .confirmationDialog("Erase all subjects, sessions and goals?",
                                 isPresented: $confirmReset, titleVisibility: .visible) {
                 Button("Erase everything", role: .destructive) {
@@ -145,6 +191,22 @@ struct SettingsView: View {
                     try? context.delete(model: Subject.self)
                 }
             }
+        }
+        .alert("Couldn't read that file", isPresented: $restoreFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Choose a StudyTrack backup (.json) created with “Back up all data”.")
+        }
+        .confirmationDialog("Replace all current data?", isPresented: Binding(
+            get: { pendingRestore != nil },
+            set: { if !$0 { pendingRestore = nil } }
+        ), titleVisibility: .visible, presenting: pendingRestore) { backup in
+            Button("Replace with backup", role: .destructive) {
+                backup.restore(into: context)
+                pendingRestore = nil
+            }
+        } message: { backup in
+            Text("Backup from \(backup.exportedAt.formatted(date: .abbreviated, time: .shortened)): \(backup.sessions.count) sessions, \(backup.subjects.count) subjects, \(backup.goals.count) goals. Everything currently in the app will be replaced.")
         }
     }
 }
