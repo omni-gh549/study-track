@@ -44,7 +44,13 @@ jobs:
             -scheme StudyTrack \
             -destination "platform=iOS Simulator,id=$UDID" \
             -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | tail -n 80
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | tail -n 15
+
+      - name: Show test failures
+        if: failure()
+        run: |
+          grep -nE "error:|: failed|failed \(|XCTAssert|Fatal|Crash" test.log | head -120 || true
+          xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>/dev/null | head -150 || true
 
       - name: Upload test results and screenshots
         if: always()
