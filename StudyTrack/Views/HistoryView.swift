@@ -79,10 +79,10 @@ struct HistoryView: View {
             .sheet(isPresented: $showingAdd) { SessionFormView() }
             .sheet(isPresented: $showingSubjects) { SubjectsView() }
             .sheet(item: $editing) { SessionFormView(session: $0) }
-            .confirmationDialog("Delete this session?", isPresented: Binding(
+            .alert("Delete this session?", isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
-            ), titleVisibility: .visible, presenting: pendingDelete) { session in
+            ), presenting: pendingDelete) { session in
                 Button("Delete session", role: .destructive) {
                     context.delete(session)
                     if !context.commit() { deleteFailed = true }
@@ -92,9 +92,9 @@ struct HistoryView: View {
             } message: { session in
                 Text("\(session.duration.studyDuration) of \(session.subject?.name ?? "study") will be removed, along with the XP it earned.")
             }
-            .alert("Couldn't delete", isPresented: $deleteFailed) {
-                Button("OK", role: .cancel) {}
-            }
+        }
+        .alert("Couldn't delete", isPresented: $deleteFailed) {
+            Button("OK", role: .cancel) {}
         }
     }
 }

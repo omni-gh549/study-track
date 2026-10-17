@@ -55,10 +55,10 @@ struct SubjectsView: View {
             }
             .sheet(isPresented: $showingNew) { SubjectFormView(subject: nil) }
             .sheet(item: $editing) { SubjectFormView(subject: $0) }
-            .confirmationDialog("Delete this subject?", isPresented: Binding(
+            .alert("Delete this subject?", isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
-            ), titleVisibility: .visible, presenting: pendingDelete) { subject in
+            ), presenting: pendingDelete) { subject in
                 Button("Delete \(subject.name)", role: .destructive) {
                     context.delete(subject)
                     context.commit()

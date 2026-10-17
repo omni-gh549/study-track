@@ -46,16 +46,18 @@ struct GoalsView: View {
             }
             .sheet(isPresented: $showingAdd) { GoalFormView() }
             .sheet(item: $editing) { GoalFormView(goal: $0) }
-            .confirmationDialog("Delete this goal?", isPresented: Binding(
+            .alert("Delete this goal?", isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
-            ), titleVisibility: .visible, presenting: pendingDelete) { goal in
+            ), presenting: pendingDelete) { goal in
                 Button("Delete “\(goal.title)”", role: .destructive) {
                     context.delete(goal)
                     context.commit()
                     pendingDelete = nil
                 }
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
+            } message: { goal in
+                Text("“\(goal.title)” will be removed. Your study sessions are not affected.")
             }
         }
     }

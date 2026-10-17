@@ -143,17 +143,17 @@ struct SessionFormView: View {
                 }
             }
             .onAppear { if subject == nil && editing == nil { subject = subjects.first } }
-            .alert("Couldn't save", isPresented: $saveFailed) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Your device may be out of storage. Nothing was changed — free up some space and try again.")
-            }
-            .confirmationDialog("Delete this session?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            .alert("Delete this session?", isPresented: $confirmDelete) {
                 Button("Delete session", role: .destructive, action: deleteSession)
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This also removes the XP it earned.")
             }
+        }
+        .alert("Couldn't save", isPresented: $saveFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your device may be out of storage. Nothing was changed — free up some space and try again.")
         }
         .presentationDetents([.large])
     }

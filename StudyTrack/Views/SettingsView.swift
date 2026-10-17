@@ -107,6 +107,11 @@ struct SettingsView: View {
                     Button("Restore from backup…", systemImage: "arrow.counterclockwise") {
                         showingImporter = true
                     }
+                    .alert("Couldn't read that file", isPresented: $restoreFailed) {
+                        Button("OK", role: .cancel) {}
+                    } message: {
+                        Text("Choose a StudyTrack backup (.json) created with “Back up all data”.")
+                    }
                 } header: {
                     Text("Backup & restore")
                 } footer: {
@@ -126,6 +131,15 @@ struct SettingsView: View {
                     }
                     Button("Erase all data", systemImage: "trash", role: .destructive) {
                         confirmReset = true
+                    }
+                    .alert("Erase everything?", isPresented: $confirmReset) {
+                        Button("Erase everything", role: .destructive) {
+                            AutoBackup.write(prefix: "pre-erase", context: context)
+                            context.deleteAllData()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("All subjects, sessions, goals and badges will be deleted. A safety copy is saved to Files first.")
                     }
                 }
 
@@ -185,24 +199,11 @@ struct SettingsView: View {
                     restoreFailed = true
                 }
             }
-            .confirmationDialog("Erase all subjects, sessions and goals?",
-                                isPresented: $confirmReset, titleVisibility: .visible) {
-                Button("Erase everything", role: .destructive) {
-                    AutoBackup.write(prefix: "pre-erase", context: context)
-                    context.deleteAllData()
-                }
-                Button("Cancel", role: .cancel) {}
-            }
         }
-        .alert("Couldn't read that file", isPresented: $restoreFailed) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Choose a StudyTrack backup (.json) created with “Back up all data”.")
-        }
-        .confirmationDialog("Replace all current data?", isPresented: Binding(
+        .alert("Replace all current data?", isPresented: Binding(
             get: { pendingRestore != nil },
             set: { if !$0 { pendingRestore = nil } }
-        ), titleVisibility: .visible, presenting: pendingRestore) { backup in
+        ), presenting: pendingRestore) { backup in
             Button("Replace with backup", role: .destructive) {
                 AutoBackup.write(prefix: "pre-restore", context: context)
                 if !backup.restore(into: context) { restoreFailed = true }
