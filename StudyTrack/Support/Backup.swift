@@ -29,18 +29,38 @@ struct BackupFile: Codable {
         var createdAt: Date
     }
 
+    struct BadgeDTO: Codable {
+        var badgeID: String
+        var unlockedAt: Date
+    }
+
+    enum BackupError: LocalizedError {
+        case unsupportedVersion(Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedVersion(let v): return "This backup (format \(v)) was made by a newer version of StudyTrack."
+            }
+        }
+    }
+
+    static let currentVersion = 2
+
     var version: Int
     var exportedAt: Date
     var subjects: [SubjectDTO]
     var sessions: [SessionDTO]
     var goals: [GoalDTO]
+    /// Absent in version 1 backups.
+    var badges: [BadgeDTO]?
 
-    static func make(subjects: [Subject], sessions: [StudySession], goals: [Goal]) -> BackupFile {
+    static func make(subjects: [Subject], sessions: [StudySession], goals: [Goal],
+                     badges: [UnlockedBadge] = []) -> BackupFile {
         var index: [PersistentIdentifier: Int] = [:]
         for (offset, subject) in subjects.enumerated() { index[subject.persistentModelID] = offset }
 
         return BackupFile(
-            version: 1,
+            version: BackupFile.currentVersion,
             exportedAt: .now,
             subjects: subjects.map {
                 SubjectDTO(name: $0.name, colorRaw: $0.colorRaw, icon: $0.icon, createdAt: $0.createdAt)
@@ -54,7 +74,8 @@ struct BackupFile: Codable {
                 GoalDTO(title: $0.title, targetMinutes: $0.targetMinutes, periodRaw: $0.periodRaw,
                         subjectIndex: $0.subject.flatMap { index[$0.persistentModelID] },
                         createdAt: $0.createdAt)
-            }
+            },
+            badges: badges.map { BadgeDTO(badgeID: $0.badgeID, unlockedAt: $0.unlockedAt) }
         )
     }
 
@@ -68,7 +89,11 @@ struct BackupFile: Codable {
     static func decode(_ data: Data) throws -> BackupFile {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(BackupFile.self, from: data)
+        let file = try decoder.decode(BackupFile.self, from: data)
+        guard (1...currentVersion).contains(file.version) else {
+            throw BackupError.unsupportedVersion(file.version)
+        }
+        return file
     }
 
     /// Replaces everything currently in the store with this backup.
@@ -77,6 +102,7 @@ struct BackupFile: Codable {
         try? context.delete(model: StudySession.self)
         try? context.delete(model: Goal.self)
         try? context.delete(model: Subject.self)
+        try? context.delete(model: UnlockedBadge.self)
 
         var restored: [Subject] = []
         for dto in subjects {
@@ -94,17 +120,24 @@ struct BackupFile: Codable {
         }
 
         for dto in sessions {
+            // Never trust a file blindly: clamp values so a damaged backup can't crash the app later.
+            let duration = dto.duration.isFinite ? min(max(dto.duration, 0), 7 * 86_400) : 0
             context.insert(StudySession(subject: subject(at: dto.subjectIndex), startDate: dto.startDate,
-                                        duration: dto.duration, notes: dto.notes, focus: dto.focus))
+                                        duration: duration, notes: dto.notes,
+                                        focus: min(max(dto.focus, 1), 5)))
         }
         for dto in goals {
-            let goal = Goal(title: dto.title, targetMinutes: dto.targetMinutes,
+            let goal = Goal(title: dto.title, targetMinutes: min(max(dto.targetMinutes, 1), 10_000),
                             period: GoalPeriod(rawValue: dto.periodRaw) ?? .weekly,
                             subject: subject(at: dto.subjectIndex))
             goal.createdAt = dto.createdAt
             context.insert(goal)
         }
-        try? context.save()
+        for dto in badges ?? [] {
+            context.insert(UnlockedBadge(badgeID: dto.badgeID, unlockedAt: dto.unlockedAt))
+        }
+        _ = context.commit()
+        GameEngine.syncBadges(context: context)
     }
 }
 

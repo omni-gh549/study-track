@@ -47,6 +47,8 @@ enum SampleData {
         context.insert(Goal(title: "Weekly study time", targetMinutes: 600, period: .weekly, subject: nil))
         context.insert(Goal(title: "Master calculus", targetMinutes: 240, period: .weekly, subject: maths))
         context.insert(Goal(title: "Ship a side project", targetMinutes: 180, period: .weekly, subject: code))
+        context.commit()
+        GameEngine.syncBadges(context: context)
     }
 }
 
@@ -54,7 +56,7 @@ enum SampleData {
 enum PreviewData {
     static let container: ModelContainer = {
         let container = try! ModelContainer(
-            for: Subject.self, StudySession.self, Goal.self,
+            for: Persistence.schema,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         SampleData.seed(container.mainContext)

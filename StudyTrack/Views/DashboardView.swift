@@ -3,6 +3,9 @@ import SwiftData
 import SwiftUI
 
 struct DashboardView: View {
+    var openTimer: () -> Void = {}
+    @Environment(TimerModel.self) private var timer
+    @Query private var badges: [UnlockedBadge]
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
     @AppStorage("dailyGoalMinutes") private var fallbackDailyMinutes = 60
@@ -30,19 +33,7 @@ struct DashboardView: View {
         goals.first { $0.period == .daily && $0.subject == nil }?.targetMinutes ?? fallbackDailyMinutes
     }
 
-    private var streak: Int {
-        let days = Set(sessions.map { calendar.startOfDay(for: $0.startDate) })
-        var day = calendar.startOfDay(for: .now)
-        if !days.contains(day) {
-            day = calendar.date(byAdding: .day, value: -1, to: day) ?? day
-        }
-        var count = 0
-        while days.contains(day) {
-            count += 1
-            day = calendar.date(byAdding: .day, value: -1, to: day) ?? .distantPast
-        }
-        return count
-    }
+    private var streak: Int { GameEngine.currentStreak(sessions: sessions) }
 
     private struct DayPoint: Identifiable {
         let id = UUID()
@@ -80,9 +71,10 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if timer.state.hasProgress { timerBanner }
                     if needsBackup { backupNudge }
                     todayCard
-                    LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals).level, streak: streak)
+                    LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID))).level, streak: streak)
                     QuestsCard(sessions: sessions)
                     HStack(spacing: 12) {
                         StatTile(title: "Streak", value: "\(streak) \(streak == 1 ? "day" : "days")",
@@ -105,6 +97,31 @@ struct DashboardView: View {
             .sheet(isPresented: $showingAdd) { SessionFormView() }
             .sheet(isPresented: $showingSettings) { SettingsView() }
         }
+    }
+
+    private var timerBanner: some View {
+        Button(action: openTimer) {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                HStack(spacing: 12) {
+                    Image(systemName: timer.state.isRunning ? "timer" : "pause.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(timer.state.isRunning ? Color.green : Color.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(timer.state.isRunning ? "Timer running" : "Timer paused")
+                            .font(.subheadline.weight(.semibold))
+                        Text(timer.state.elapsed(at: context.date).clock)
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("Open").font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(.primary)
+            }
+            .card()
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard.timerBanner")
     }
 
     private var backupNudge: some View {
@@ -208,5 +225,5 @@ struct DashboardView: View {
 }
 
 #Preview {
-    DashboardView().modelContainer(PreviewData.container)
+    DashboardView().modelContainer(PreviewData.container).environment(TimerModel())
 }

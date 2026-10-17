@@ -13,29 +13,41 @@ struct StudyTrackApp: App {
     }
 }
 
+enum AppTab: Hashable {
+    case today, timer, goals, history, profile
+}
+
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("didOnboard") private var didOnboard = false
     @AppStorage("storeWasRecovered") private var storeWasRecovered = false
     @State private var showOnboarding = false
+    @State private var tab: AppTab = .today
     @State private var celebrations = CelebrationCenter()
+    @State private var timer = TimerModel()
 
     var body: some View {
-        TabView {
-            DashboardView()
+        TabView(selection: $tab) {
+            DashboardView(openTimer: { tab = .timer })
                 .tabItem { Label("Today", systemImage: "chart.bar.fill") }
+                .tag(AppTab.today)
             TimerView()
                 .tabItem { Label("Timer", systemImage: "timer") }
+                .tag(AppTab.timer)
             GoalsView()
                 .tabItem { Label("Goals", systemImage: "target") }
+                .tag(AppTab.goals)
             HistoryView()
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tag(AppTab.history)
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "trophy.fill") }
+                .tag(AppTab.profile)
         }
         .overlay { CelebrationOverlay(center: celebrations) }
         .environment(celebrations)
+        .environment(timer)
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView {
                 didOnboard = true
@@ -52,15 +64,20 @@ struct RootView: View {
                 SampleData.seed(context)
                 didOnboard = true
             }
+            GameEngine.syncBadges(context: context)
             guard !didOnboard else { return }
             let existing = (try? context.fetchCount(FetchDescriptor<Subject>())) ?? 0
             if existing == 0 { showOnboarding = true } else { didOnboard = true }
         }
         // Flush to disk whenever the app leaves the foreground, so a kill never loses the last edit.
         .onChange(of: scenePhase) { _, phase in
-            guard phase != .active else { return }
-            try? context.save()
-            if phase == .background { AutoBackup.snapshotIfNeeded(context: context) }
+            if phase == .active {
+                timer.reload()
+                GameEngine.syncBadges(context: context)
+            } else {
+                context.commit()
+                if phase == .background { AutoBackup.snapshotIfNeeded(context: context) }
+            }
         }
     }
 }

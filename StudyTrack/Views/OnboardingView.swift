@@ -112,7 +112,7 @@ struct OnboardingView: View {
         for p in presets where selected.contains(p.name) {
             context.insert(Subject(name: p.name, color: p.color, icon: p.icon))
         }
-        try? context.save()
+        context.commit()
         onFinish()
     }
 }

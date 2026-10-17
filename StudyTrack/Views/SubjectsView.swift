@@ -61,6 +61,7 @@ struct SubjectsView: View {
             ), titleVisibility: .visible, presenting: pendingDelete) { subject in
                 Button("Delete \(subject.name)", role: .destructive) {
                     context.delete(subject)
+                    context.commit()
                     pendingDelete = nil
                 }
             } message: { subject in
@@ -74,7 +75,9 @@ struct SubjectFormView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
+    @Query private var allSubjects: [Subject]
     let subject: Subject?
+    @State private var saveFailed = false
     @State private var name: String
     @State private var color: SubjectColor
     @State private var icon: String
@@ -94,6 +97,11 @@ struct SubjectFormView: View {
 
     private let columns = Array(repeating: GridItem(.flexible()), count: 5)
 
+    private var isDuplicate: Bool {
+        let others = allSubjects.filter { $0.persistentModelID != subject?.persistentModelID }.map(\.name)
+        return SubjectNaming.isDuplicate(name, among: others)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -106,7 +114,12 @@ struct SubjectFormView: View {
                             .background(color.color.gradient,
                                         in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                         TextField("Subject name", text: $name)
+                            .onChange(of: name) { _, new in
+                                if new.count > SubjectNaming.maxLength { name = String(new.prefix(SubjectNaming.maxLength)) }
+                            }
                     }
+                } footer: {
+                    if isDuplicate { Text("You already have a subject with this name.").foregroundStyle(.red) }
                 }
                 Section("Colour") {
                     LazyVGrid(columns: columns, spacing: 14) {
@@ -153,15 +166,18 @@ struct SubjectFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(SubjectNaming.clean(name).isEmpty || isDuplicate)
                 }
             }
+        }
+        .alert("Couldn't save", isPresented: $saveFailed) {
+            Button("OK", role: .cancel) {}
         }
         .presentationDetents([.large])
     }
 
     private func save() {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let trimmed = SubjectNaming.clean(name)
         if let subject {
             subject.name = trimmed
             subject.subjectColor = color
@@ -169,7 +185,7 @@ struct SubjectFormView: View {
         } else {
             context.insert(Subject(name: trimmed, color: color, icon: icon))
         }
-        dismiss()
+        if context.commit() { dismiss() } else { saveFailed = true }
     }
 }
 

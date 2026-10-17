@@ -9,9 +9,11 @@ struct SessionFormView: View {
     @Query(sort: \Subject.name) private var subjects: [Subject]
     @Query private var allSessions: [StudySession]
     @Query private var goals: [Goal]
+    @Query private var badges: [UnlockedBadge]
 
     private let editing: StudySession?
     private let onSaved: (() -> Void)?
+    private let wasTrimmed: Bool
 
     @State private var subject: Subject?
     @State private var date: Date
@@ -19,6 +21,10 @@ struct SessionFormView: View {
     @State private var minutes: Int
     @State private var focus: Int
     @State private var notes: String
+    @State private var saveFailed = false
+    @State private var confirmDelete = false
+
+    private static let maxHours = 24
 
     init(session: StudySession? = nil,
          subject: Subject? = nil,
@@ -27,17 +33,24 @@ struct SessionFormView: View {
          onSaved: (() -> Void)? = nil) {
         editing = session
         self.onSaved = onSaved
-        let total = max(Int(((session?.duration ?? duration) / 60).rounded()), 1)
+        let raw = session?.duration ?? duration
+        let safe = raw.isFinite ? max(raw, 0) : 0
+        let total = max(Int((safe / 60).rounded()), 1)
+        wasTrimmed = total > Self.maxHours * 60
+        let capped = min(total, Self.maxHours * 60)
         _subject = State(initialValue: session?.subject ?? subject)
         _date = State(initialValue: session?.startDate ?? date)
-        _hours = State(initialValue: min(total / 60, 24))
-        _minutes = State(initialValue: total % 60)
+        _hours = State(initialValue: capped / 60)
+        _minutes = State(initialValue: capped % 60)
         _focus = State(initialValue: session?.focus ?? 3)
         _notes = State(initialValue: session?.notes ?? "")
     }
 
     private var totalSeconds: TimeInterval { TimeInterval((hours * 60 + minutes) * 60) }
-    private var xpPreview: Int { editing == nil ? Int(totalSeconds / 60) + (focus >= 4 ? Int(totalSeconds / 60) / 5 : 0) + 5 : 0 }
+    private var xpPreview: Int {
+        let m = Int(totalSeconds / 60)
+        return m + (focus >= 4 ? m / 5 : 0) + 5
+    }
 
     var body: some View {
         NavigationStack {
@@ -59,10 +72,10 @@ struct SessionFormView: View {
                     DatePicker("Started", selection: $date, in: ...Date.now)
                 }
 
-                Section("Duration") {
+                Section {
                     HStack(spacing: 0) {
                         Picker("Hours", selection: $hours) {
-                            ForEach(0...24, id: \.self) { Text("\($0) h").tag($0) }
+                            ForEach(0...Self.maxHours, id: \.self) { Text("\($0) h").tag($0) }
                         }
                         .pickerStyle(.wheel)
                         .frame(maxWidth: .infinity)
@@ -76,6 +89,12 @@ struct SessionFormView: View {
                         .clipped()
                     }
                     .frame(height: 120)
+                } header: {
+                    Text("Duration")
+                } footer: {
+                    if wasTrimmed {
+                        Text("The timer ran for more than 24 hours, so it was trimmed. Adjust the duration if needed.")
+                    }
                 }
 
                 Section {
@@ -90,6 +109,7 @@ struct SessionFormView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderless)
+                            .accessibilityLabel("\(i) \(i == 1 ? "star" : "stars")")
                         }
                     }
                     .sensoryFeedback(.selection, trigger: focus)
@@ -104,12 +124,9 @@ struct SessionFormView: View {
                         .lineLimit(3...6)
                 }
 
-                if let editing {
+                if editing != nil {
                     Section {
-                        Button("Delete session", role: .destructive) {
-                            context.delete(editing)
-                            dismiss()
-                        }
+                        Button("Delete session", role: .destructive) { confirmDelete = true }
                     }
                 }
             }
@@ -125,8 +142,24 @@ struct SessionFormView: View {
                 }
             }
             .onAppear { if subject == nil && editing == nil { subject = subjects.first } }
+            .alert("Couldn't save", isPresented: $saveFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Your device may be out of storage. Nothing was changed — free up some space and try again.")
+            }
+            .confirmationDialog("Delete this session?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete session", role: .destructive, action: deleteSession)
+            } message: {
+                Text("This also removes the XP it earned.")
+            }
         }
         .presentationDetents([.large])
+    }
+
+    private func deleteSession() {
+        guard let editing else { return }
+        context.delete(editing)
+        if context.commit() { dismiss() } else { saveFailed = true }
     }
 
     private func save() {
@@ -138,17 +171,26 @@ struct SessionFormView: View {
             editing.duration = totalSeconds
             editing.focus = focus
             editing.notes = cleaned
-            dismiss()
+            if context.commit() { dismiss() } else { saveFailed = true }
             return
         }
 
+        let storedBadges = Set(badges.map(\.badgeID))
         let existing = allSessions
-        let before = GameEngine.snapshot(sessions: existing, goals: goals)
+        let before = GameEngine.snapshot(sessions: existing, goals: goals, stored: storedBadges)
+
         let session = StudySession(subject: subject, startDate: date, duration: totalSeconds,
                                    notes: cleaned, focus: focus)
         context.insert(session)
+        // Only report success (and let the timer reset) once the session is really on disk.
+        guard context.commit() else {
+            saveFailed = true
+            return
+        }
+
         let afterSessions = existing.filter { $0.persistentModelID != session.persistentModelID } + [session]
-        let after = GameEngine.snapshot(sessions: afterSessions, goals: goals)
+        let after = GameEngine.snapshot(sessions: afterSessions, goals: goals, stored: storedBadges)
+        GameEngine.syncBadges(context: context)
 
         onSaved?()
         dismiss()

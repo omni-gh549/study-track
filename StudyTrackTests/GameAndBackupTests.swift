@@ -8,7 +8,7 @@ final class GameAndBackupTests: XCTestCase {
     private var context: ModelContext { container.mainContext }
 
     override func setUpWithError() throws {
-        container = try ModelContainer(for: Subject.self, StudySession.self, Goal.self,
+        container = try ModelContainer(for: Persistence.schema,
                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     }
 
@@ -129,7 +129,7 @@ final class GameAndBackupTests: XCTestCase {
                                    sessions: try sessions(), goals: try goals())
         let decoded = try BackupFile.decode(try file.encoded())
 
-        let other = try ModelContainer(for: Subject.self, StudySession.self, Goal.self,
+        let other = try ModelContainer(for: Persistence.schema,
                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         decoded.restore(into: other.mainContext)
 
@@ -189,5 +189,125 @@ final class GameAndBackupTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         let file = try BackupFile.decode(try Data(contentsOf: url))
         XCTAssertEqual(file.sessions.count, 3)
+    }
+
+    // MARK: Permanent badges
+
+    func testBadgesAreNeverRevoked() throws {
+        let s1 = add(nil, minutes: 90, focus: 5)
+        GameEngine.syncBadges(context: context)
+        let stored = Set(try context.fetch(FetchDescriptor<UnlockedBadge>()).map(\.badgeID))
+        XCTAssertTrue(stored.contains("first"))
+        XCTAssertTrue(stored.contains("laser"))
+
+        // Delete the only session: derived data no longer qualifies, the badges must remain.
+        context.delete(s1)
+        try context.save()
+        let snap = GameEngine.snapshot(sessions: try sessions(), goals: [], stored: stored)
+        XCTAssertTrue(snap.unlocked.contains("first"))
+        XCTAssertTrue(snap.unlocked.contains("laser"))
+        XCTAssertEqual(snap.stats.xp, 0)
+    }
+
+    func testSyncBadgesIsIdempotent() throws {
+        add(nil, minutes: 30)
+        GameEngine.syncBadges(context: context)
+        let first = try context.fetch(FetchDescriptor<UnlockedBadge>()).count
+        GameEngine.syncBadges(context: context)
+        GameEngine.syncBadges(context: context)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<UnlockedBadge>()).count, first)
+    }
+
+    func testGoalBadgeStaysAfterWeeklyReset() throws {
+        add(nil, minutes: 60)
+        context.insert(Goal(title: "G", targetMinutes: 30, period: .weekly, subject: nil))
+        try context.save()
+        GameEngine.syncBadges(context: context)
+        let stored = Set(try context.fetch(FetchDescriptor<UnlockedBadge>()).map(\.badgeID))
+        XCTAssertTrue(stored.contains("goal"))
+        // Next week: no sessions in the current period, goal "incomplete" again, badge persists.
+        let nextWeek = Calendar.current.date(byAdding: .day, value: 8, to: .now)!
+        let g = try goals()[0]
+        XCTAssertEqual(g.progress(in: try sessions(), now: nextWeek), 0)
+        XCTAssertTrue(GameEngine.snapshot(sessions: try sessions(), goals: [g], stored: stored).unlocked.contains("goal"))
+    }
+
+    func testBackupIncludesAndRestoresBadges() throws {
+        try populate()
+        GameEngine.syncBadges(context: context)
+        let badgeCount = try context.fetch(FetchDescriptor<UnlockedBadge>()).count
+        XCTAssertGreaterThan(badgeCount, 0)
+        let file = BackupFile.make(subjects: try context.fetch(FetchDescriptor<Subject>()),
+                                   sessions: try sessions(), goals: try goals(),
+                                   badges: try context.fetch(FetchDescriptor<UnlockedBadge>()))
+        let other = try ModelContainer(for: Persistence.schema,
+                                       configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        try BackupFile.decode(try file.encoded()).restore(into: other.mainContext)
+        XCTAssertGreaterThanOrEqual(try other.mainContext.fetch(FetchDescriptor<UnlockedBadge>()).count, badgeCount)
+    }
+
+    // MARK: Hostile / damaged backups
+
+    func testRestoreSanitisesNonsenseValues() throws {
+        let json = """
+        {"version":2,"exportedAt":"2026-10-16T12:00:00Z",
+         "subjects":[{"name":"X","colorRaw":"not-a-colour","icon":"book.fill","createdAt":"2026-10-01T09:00:00Z"}],
+         "sessions":[{"subjectIndex":99,"startDate":"2026-10-15T09:00:00Z","duration":1e300,"notes":"a","focus":99},
+                     {"subjectIndex":-1,"startDate":"2026-10-14T09:00:00Z","duration":-50,"notes":"b","focus":-4}],
+         "goals":[{"title":"G","targetMinutes":-5,"periodRaw":"bogus","subjectIndex":7,"createdAt":"2026-10-01T09:00:00Z"}],
+         "badges":null}
+        """
+        try BackupFile.decode(Data(json.utf8)).restore(into: context)
+        let all = try sessions()
+        XCTAssertEqual(all.count, 2)
+        for s in all {
+            XCTAssertTrue((0...(7 * 86_400)).contains(s.duration))
+            XCTAssertTrue((1...5).contains(s.focus))
+            XCTAssertNil(s.subject)
+        }
+        XCTAssertEqual(try goals().first?.targetMinutes, 1)
+        XCTAssertEqual(try goals().first?.period, .weekly)
+        // And the engine must not trap on the result.
+        _ = GameEngine.snapshot(sessions: all, goals: try goals())
+        _ = CSVExport.make(sessions: all)
+    }
+
+    func testNewerBackupVersionIsRejected() {
+        let json = #"{"version":99,"exportedAt":"2026-10-16T12:00:00Z","subjects":[],"sessions":[],"goals":[]}"#
+        XCTAssertThrowsError(try BackupFile.decode(Data(json.utf8)))
+    }
+
+    func testGarbageIsRejected() {
+        XCTAssertThrowsError(try BackupFile.decode(Data("hello".utf8)))
+        XCTAssertThrowsError(try BackupFile.decode(Data("{}".utf8)))
+        XCTAssertThrowsError(try BackupFile.decode(Data()))
+    }
+
+    // MARK: CSV & naming
+
+    func testCSVEscapesQuotesCommasNewlinesAndFormulas() throws {
+        let s = add(nil, minutes: 10)
+        s.notes = "He said \"hi\", then\nleft"
+        let formula = add(nil, minutes: 5)
+        formula.notes = "=HYPERLINK(\"http://evil\")"
+        let csv = CSVExport.make(sessions: try sessions())
+        XCTAssertTrue(csv.contains("\"He said \"\"hi\"\", then\nleft\""))
+        XCTAssertTrue(csv.contains("\"'=HYPERLINK("))
+        XCTAssertTrue(csv.hasPrefix("date,subject,minutes,focus,notes\n"))
+    }
+
+    func testSubjectNaming() {
+        XCTAssertTrue(SubjectNaming.isDuplicate("  maths ", among: ["Maths"]))
+        XCTAssertTrue(SubjectNaming.isDuplicate("Café", among: ["cafe"]))
+        XCTAssertFalse(SubjectNaming.isDuplicate("Art", among: ["Maths"]))
+        XCTAssertEqual(SubjectNaming.clean("   Physics \n"), "Physics")
+        XCTAssertEqual(SubjectNaming.clean(String(repeating: "a", count: 100)).count, SubjectNaming.maxLength)
+    }
+
+    func testCommitSucceedsAndPersistsInStore() throws {
+        let s = Subject(name: "Persisted")
+        context.insert(s)
+        XCTAssertTrue(context.commit())
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Subject>()).count, 1)
     }
 }

@@ -1,36 +1,41 @@
 import SwiftData
 import SwiftUI
 
-/// Timer state lives in `TimerState`, is written to disk (fsync'd) on every change, and all time is
-/// derived from timestamps — so it survives backgrounding, the app being killed, and the phone
+/// Timer state lives in `TimerModel` → `TimerState`, is written to disk (fsync'd) on every change, and all
+/// time is derived from timestamps — so it survives backgrounding, the app being killed, and the phone
 /// being switched off and on again.
 struct TimerView: View {
+    @Environment(TimerModel.self) private var timer
     @Query(sort: \Subject.name) private var subjects: [Subject]
 
-    @State private var state = TimerStore.load()
     @State private var subject: Subject?
     @State private var showingSave = false
     @State private var finishedDuration: TimeInterval = 0
 
+    private var state: TimerState { timer.state }
     private var tint: Color { subject?.color ?? .accentColor }
-
-    private func update(_ change: (inout TimerState) -> Void) {
-        change(&state)
-        TimerStore.save(state)
-    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
-                Picker("Subject", selection: $subject) {
-                    Text("No subject").tag(Subject?.none)
-                    ForEach(subjects) { s in
-                        Label(s.name, systemImage: s.icon).tag(Optional(s))
+                VStack(spacing: 6) {
+                    Picker("Subject", selection: $subject) {
+                        Text("No subject").tag(Subject?.none)
+                        ForEach(subjects) { s in
+                            Label(s.name, systemImage: s.icon).tag(Optional(s))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .buttonStyle(.bordered)
+                    .disabled(state.hasProgress)
+
+                    if subjects.isEmpty {
+                        Text("Add subjects under History › Subjects to organise your sessions.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                 }
-                .pickerStyle(.menu)
-                .buttonStyle(.bordered)
-                .disabled(state.hasProgress)
 
                 Spacer()
 
@@ -61,7 +66,7 @@ struct TimerView: View {
                 Spacer()
 
                 HStack(spacing: 16) {
-                    Button(role: .destructive) { update { $0.reset() } } label: {
+                    Button(role: .destructive) { timer.update { $0.reset() } } label: {
                         Label("Reset", systemImage: "arrow.counterclockwise")
                     }
                     .buttonStyle(.bordered)
@@ -89,38 +94,39 @@ struct TimerView: View {
             .navigationTitle("Timer")
             .sensoryFeedback(.impact, trigger: state.isRunning)
             .onAppear {
-                // Re-read from disk in case the view was recreated; restore the chosen subject.
-                state = TimerStore.load()
-                subject = subjects.first { $0.name == state.subjectName } ?? subjects.first
+                timer.reload()
+                subject = subjects.first { $0.name == timer.state.subjectName } ?? subjects.first
             }
             .onChange(of: subject) { _, new in
                 let name = new?.name ?? ""
-                if name != state.subjectName { update { $0.subjectName = name } }
+                if name != timer.state.subjectName { timer.update { $0.subjectName = name } }
             }
             .sheet(isPresented: $showingSave) {
                 SessionFormView(subject: subject,
-                                date: state.sessionStart ?? .now,
+                                date: timer.state.sessionStart ?? .now,
                                 duration: finishedDuration,
-                                onSaved: { update { $0.reset() } })
+                                onSaved: { timer.update { $0.reset() } })
             }
         }
     }
 
     private func toggle() {
         if state.isRunning {
-            update { $0.pause(at: .now) }
+            timer.update { $0.pause(at: .now) }
         } else {
-            update { $0.start(at: .now) }
+            timer.update { $0.start(at: .now) }
         }
     }
 
     private func finish() {
-        update { $0.pause(at: .now) }
-        finishedDuration = state.accumulated
+        timer.update { $0.pause(at: .now) }
+        finishedDuration = timer.state.accumulated
         showingSave = true
     }
 }
 
 #Preview {
-    TimerView().modelContainer(PreviewData.container)
+    TimerView()
+        .modelContainer(PreviewData.container)
+        .environment(TimerModel())
 }

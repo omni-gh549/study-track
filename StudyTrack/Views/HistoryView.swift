@@ -8,6 +8,8 @@ struct HistoryView: View {
     @State private var showingAdd = false
     @State private var showingSubjects = false
     @State private var editing: StudySession?
+    @State private var pendingDelete: StudySession?
+    @State private var deleteFailed = false
 
     private struct DayGroup: Identifiable {
         let day: Date
@@ -17,10 +19,11 @@ struct HistoryView: View {
     }
 
     private var filtered: [StudySession] {
-        guard !search.isEmpty else { return sessions }
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return sessions }
         return sessions.filter {
-            $0.notes.localizedCaseInsensitiveContains(search)
-                || ($0.subject?.name.localizedCaseInsensitiveContains(search) ?? false)
+            $0.notes.localizedCaseInsensitiveContains(term)
+                || ($0.subject?.name.localizedCaseInsensitiveContains(term) ?? false)
         }
     }
 
@@ -40,10 +43,12 @@ struct HistoryView: View {
                                 SessionRow(session: session).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                        }
-                            .onDelete { offsets in
-                                for i in offsets { context.delete(group.sessions[i]) }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) { pendingDelete = session } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             }
+                        }
                     } header: {
                         HStack {
                             Text(group.day, format: .dateTime.weekday(.wide).month().day())
@@ -74,6 +79,21 @@ struct HistoryView: View {
             .sheet(isPresented: $showingAdd) { SessionFormView() }
             .sheet(isPresented: $showingSubjects) { SubjectsView() }
             .sheet(item: $editing) { SessionFormView(session: $0) }
+            .confirmationDialog("Delete this session?", isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ), titleVisibility: .visible, presenting: pendingDelete) { session in
+                Button("Delete session", role: .destructive) {
+                    context.delete(session)
+                    if !context.commit() { deleteFailed = true }
+                    pendingDelete = nil
+                }
+            } message: { session in
+                Text("\(session.duration.studyDuration) of \(session.subject?.name ?? "study") will be removed, along with the XP it earned.")
+            }
+            .alert("Couldn't delete", isPresented: $deleteFailed) {
+                Button("OK", role: .cancel) {}
+            }
         }
     }
 }

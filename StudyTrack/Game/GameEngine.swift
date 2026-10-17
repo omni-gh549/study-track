@@ -192,10 +192,24 @@ enum GameEngine {
         return s
     }
 
-    static func snapshot(sessions: [StudySession], goals: [Goal]) -> GameSnapshot {
+    /// `stored` are badges already earned and persisted; they stay unlocked no matter what the data says now.
+    static func snapshot(sessions: [StudySession], goals: [Goal], stored: Set<String> = []) -> GameSnapshot {
         let s = stats(sessions: sessions, goals: goals)
-        let unlocked = Set(achievements.filter { $0.isUnlocked(s) }.map(\.id))
-        return GameSnapshot(stats: s, level: levelInfo(for: s.xp), unlocked: unlocked)
+        let derived = Set(achievements.filter { $0.isUnlocked(s) }.map(\.id))
+        return GameSnapshot(stats: s, level: levelInfo(for: s.xp), unlocked: derived.union(stored))
+    }
+
+    /// Persists any newly earned badges. Safe to call as often as you like.
+    @MainActor
+    static func syncBadges(context: ModelContext) {
+        let sessions = (try? context.fetch(FetchDescriptor<StudySession>())) ?? []
+        let goals = (try? context.fetch(FetchDescriptor<Goal>())) ?? []
+        let existing = (try? context.fetch(FetchDescriptor<UnlockedBadge>())) ?? []
+        let stored = Set(existing.map(\.badgeID))
+        let missing = snapshot(sessions: sessions, goals: goals, stored: stored).unlocked.subtracting(stored)
+        guard !missing.isEmpty else { return }
+        for id in missing { context.insert(UnlockedBadge(badgeID: id)) }
+        context.commit()
     }
 
     static func celebration(from before: GameSnapshot, to after: GameSnapshot) -> Celebration {

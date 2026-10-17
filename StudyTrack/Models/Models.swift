@@ -111,3 +111,16 @@ final class Goal {
             .reduce(0) { $0 + $1.duration }
     }
 }
+
+/// Badges are permanent: once earned they are stored here and never taken away, even if the
+/// numbers they were derived from later change (a weekly goal resets, a session is deleted…).
+@Model
+final class UnlockedBadge {
+    var badgeID: String = ""
+    var unlockedAt: Date = Date()
+
+    init(badgeID: String, unlockedAt: Date = .now) {
+        self.badgeID = badgeID
+        self.unlockedAt = unlockedAt
+    }
+}

@@ -36,6 +36,7 @@ struct SettingsView: View {
     @Query(sort: \StudySession.startDate) private var sessions: [StudySession]
     @Query private var subjects: [Subject]
     @Query private var goals: [Goal]
+    @Query private var badges: [UnlockedBadge]
 
     @AppStorage("dailyGoalMinutes") private var dailyGoalMinutes = 60
     @AppStorage("remindersOn") private var remindersOn = false
@@ -67,7 +68,7 @@ struct SettingsView: View {
     }
 
     private var backupDocument: BackupDocument {
-        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals)
+        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals, badges: badges)
         return BackupDocument(data: (try? file.encoded()) ?? Data(), filename: backupName)
     }
 
@@ -77,16 +78,7 @@ struct SettingsView: View {
             : "Last backup: " + Date(timeIntervalSince1970: lastBackup).formatted(.relative(presentation: .named))
     }
 
-    private var csv: String {
-        let iso = ISO8601DateFormatter()
-        var lines = ["date,subject,minutes,focus,notes"]
-        for s in sessions {
-            let subject = s.subject?.name ?? ""
-            let notes = s.notes.replacingOccurrences(of: "\"", with: "\"\"")
-            lines.append("\(iso.string(from: s.startDate)),\"\(subject)\",\(Int(s.duration / 60)),\(s.focus),\"\(notes)\"")
-        }
-        return lines.joined(separator: "\n")
-    }
+    private var csv: String { CSVExport.make(sessions: sessions) }
 
     var body: some View {
         NavigationStack {
@@ -138,7 +130,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "0.4.0")
+                    LabeledContent("Version", value: "0.5.0")
                     Text("XP, levels and badges are calculated from your sessions, so editing or deleting a session updates them too.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -149,6 +141,16 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                // The user may have revoked notification permission in iOS Settings since last time.
+                guard remindersOn else { return }
+                let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+                if status == .authorized || status == .provisional {
+                    _ = await Reminders.schedule(minutesAfterMidnight: reminderMinutes)
+                } else {
+                    remindersOn = false
                 }
             }
             .onChange(of: remindersOn) { _, on in
@@ -178,7 +180,7 @@ struct SettingsView: View {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 do {
-                    pendingRestore = try BackupFile.decode(try Data(contentsOf: url))
+                    pendingRestore = try BackupFile.decode(try FileReading.coordinatedData(at: url))
                 } catch {
                     restoreFailed = true
                 }
@@ -190,6 +192,8 @@ struct SettingsView: View {
                     try? context.delete(model: StudySession.self)
                     try? context.delete(model: Goal.self)
                     try? context.delete(model: Subject.self)
+                    try? context.delete(model: UnlockedBadge.self)
+                    context.commit()
                 }
             }
         }

@@ -4,10 +4,13 @@ import SwiftUI
 struct ProfileView: View {
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
+    @Query private var badges: [UnlockedBadge]
     @State private var showingSettings = false
     @State private var selected: AchievementDef?
 
-    private var snapshot: GameSnapshot { GameEngine.snapshot(sessions: sessions, goals: goals) }
+    private var snapshot: GameSnapshot {
+        GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID)))
+    }
 
     var body: some View {
         let snap = snapshot

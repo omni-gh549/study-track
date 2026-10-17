@@ -7,6 +7,7 @@ struct GoalsView: View {
     @Query private var sessions: [StudySession]
     @State private var showingAdd = false
     @State private var editing: Goal?
+    @State private var pendingDelete: Goal?
 
     var body: some View {
         NavigationStack {
@@ -18,11 +19,14 @@ struct GoalsView: View {
                             ForEach(items) { goal in
                                 Button { editing = goal } label: {
                                     GoalRow(goal: goal, progress: goal.progress(in: sessions))
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                            }
-                            .onDelete { offsets in
-                                for i in offsets { context.delete(items[i]) }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) { pendingDelete = goal } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                     }
@@ -42,6 +46,16 @@ struct GoalsView: View {
             }
             .sheet(isPresented: $showingAdd) { GoalFormView() }
             .sheet(item: $editing) { GoalFormView(goal: $0) }
+            .confirmationDialog("Delete this goal?", isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ), titleVisibility: .visible, presenting: pendingDelete) { goal in
+                Button("Delete “\(goal.title)”", role: .destructive) {
+                    context.delete(goal)
+                    context.commit()
+                    pendingDelete = nil
+                }
+            }
         }
     }
 }
@@ -90,6 +104,7 @@ struct GoalFormView: View {
     @State private var period: GoalPeriod
     @State private var subject: Subject?
     @State private var targetMinutes: Int
+    @State private var saveFailed = false
 
     init(goal: Goal? = nil) {
         self.goal = goal
@@ -143,11 +158,19 @@ struct GoalFormView: View {
                             context.insert(Goal(title: name, targetMinutes: targetMinutes,
                                                 period: period, subject: subject))
                         }
-                        dismiss()
+                        if context.commit() {
+                            GameEngine.syncBadges(context: context)
+                            dismiss()
+                        } else {
+                            saveFailed = true
+                        }
                     }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+        .alert("Couldn't save", isPresented: $saveFailed) {
+            Button("OK", role: .cancel) {}
         }
         .presentationDetents([.medium, .large])
     }
