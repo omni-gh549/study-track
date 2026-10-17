@@ -64,6 +64,7 @@ struct SubjectsView: View {
                     context.commit()
                     pendingDelete = nil
                 }
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
             } message: { subject in
                 Text("\(subject.sessions.count) sessions will be kept without a subject. Its goals will be removed.")
             }

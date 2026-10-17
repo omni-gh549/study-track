@@ -88,6 +88,7 @@ struct HistoryView: View {
                     if !context.commit() { deleteFailed = true }
                     pendingDelete = nil
                 }
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
             } message: { session in
                 Text("\(session.duration.studyDuration) of \(session.subject?.name ?? "study") will be removed, along with the XP it earned.")
             }

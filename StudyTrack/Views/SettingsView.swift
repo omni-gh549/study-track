@@ -189,12 +189,9 @@ struct SettingsView: View {
                                 isPresented: $confirmReset, titleVisibility: .visible) {
                 Button("Erase everything", role: .destructive) {
                     AutoBackup.write(prefix: "pre-erase", context: context)
-                    try? context.delete(model: StudySession.self)
-                    try? context.delete(model: Goal.self)
-                    try? context.delete(model: Subject.self)
-                    try? context.delete(model: UnlockedBadge.self)
-                    context.commit()
+                    context.deleteAllData()
                 }
+                Button("Cancel", role: .cancel) {}
             }
         }
         .alert("Couldn't read that file", isPresented: $restoreFailed) {
@@ -208,9 +205,10 @@ struct SettingsView: View {
         ), titleVisibility: .visible, presenting: pendingRestore) { backup in
             Button("Replace with backup", role: .destructive) {
                 AutoBackup.write(prefix: "pre-restore", context: context)
-                backup.restore(into: context)
+                if !backup.restore(into: context) { restoreFailed = true }
                 pendingRestore = nil
             }
+            Button("Cancel", role: .cancel) { pendingRestore = nil }
         } message: { backup in
             Text("Backup from \(backup.exportedAt.formatted(date: .abbreviated, time: .shortened)): \(backup.sessions.count) sessions, \(backup.subjects.count) subjects, \(backup.goals.count) goals. Everything currently in the app will be replaced.")
         }

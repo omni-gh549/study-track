@@ -98,11 +98,9 @@ struct BackupFile: Codable {
 
     /// Replaces everything currently in the store with this backup.
     @MainActor
-    func restore(into context: ModelContext) {
-        try? context.delete(model: StudySession.self)
-        try? context.delete(model: Goal.self)
-        try? context.delete(model: Subject.self)
-        try? context.delete(model: UnlockedBadge.self)
+    @discardableResult
+    func restore(into context: ModelContext) -> Bool {
+        context.deleteAllRecords()
 
         var restored: [Subject] = []
         for dto in subjects {
@@ -136,8 +134,10 @@ struct BackupFile: Codable {
         for dto in badges ?? [] {
             context.insert(UnlockedBadge(badgeID: dto.badgeID, unlockedAt: dto.unlockedAt))
         }
-        _ = context.commit()
+        // Deletion and re-insertion are committed together: either the whole restore applies or nothing does.
+        guard context.commit() else { return false }
         GameEngine.syncBadges(context: context)
+        return true
     }
 }
 

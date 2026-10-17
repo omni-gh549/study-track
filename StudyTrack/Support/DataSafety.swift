@@ -16,6 +16,23 @@ extension ModelContext {
     }
 }
 
+extension ModelContext {
+    /// Marks every record of every type for deletion (does not commit). Deleting objects one by one is
+    /// used instead of the batch `delete(model:)`, which proved unreliable for clearing the store.
+    func deleteAllRecords() {
+        for item in (try? fetch(FetchDescriptor<StudySession>())) ?? [] { delete(item) }
+        for item in (try? fetch(FetchDescriptor<Goal>())) ?? [] { delete(item) }
+        for item in (try? fetch(FetchDescriptor<UnlockedBadge>())) ?? [] { delete(item) }
+        for item in (try? fetch(FetchDescriptor<Subject>())) ?? [] { delete(item) }
+    }
+
+    @discardableResult
+    func deleteAllData() -> Bool {
+        deleteAllRecords()
+        return commit()
+    }
+}
+
 enum SubjectNaming {
     static let maxLength = 40
 

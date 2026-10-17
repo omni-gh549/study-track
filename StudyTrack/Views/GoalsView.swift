@@ -55,6 +55,7 @@ struct GoalsView: View {
                     context.commit()
                     pendingDelete = nil
                 }
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
             }
         }
     }

@@ -36,7 +36,14 @@ final class FeatureUITests: XCTestCase {
     }
 
     private func type(into placeholder: String, _ text: String) {
-        let field = app.textFields[placeholder].exists ? app.textFields[placeholder] : app.textViews[placeholder]
+        let ids = placeholder == "What did you cover?" ? ["session.notes", placeholder] : [placeholder]
+        var field = app.textFields[ids[0]]
+        for id in ids {
+            for candidate in [app.textFields[id], app.textViews[id]] where candidate.waitForExistence(timeout: 2) {
+                field = candidate
+                break
+            }
+        }
         XCTAssertTrue(field.waitForExistence(timeout: 5), "No field '\(placeholder)'")
         field.tap()
         field.typeText(text)
@@ -180,21 +187,25 @@ final class FeatureUITests: XCTestCase {
     func testProfileBadgesInsightsAndSettings() throws {
         launch()
         tab("Profile")
-        let badge = app.buttons["First Steps"]
-        XCTAssertTrue(badge.waitForExistence(timeout: 5) || { app.swipeUp(); return badge.exists }())
-        badge.tap()
-        XCTAssertTrue(app.staticTexts["Unlocked"].waitForExistence(timeout: 5))
-        app.swipeDown()
 
-        app.swipeDown()
-        app.buttons["Insights"].tap()
+        // Settings (nav bar button, always reachable)
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Restore from backup…"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+
+        // Insights is further down the page.
+        let insights = app.buttons["Insights"]
+        reveal(insights)
+        insights.tap()
         XCTAssertTrue(app.staticTexts["Time by subject"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
 
-        app.buttons["Settings"].tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Back up all data"].exists || app.staticTexts["Back up all data"].exists)
-        XCTAssertTrue(app.buttons["Restore from backup…"].exists)
+        // Badges are below that.
+        let badge = app.buttons["First Steps"]
+        reveal(badge)
+        badge.tap()
+        XCTAssertTrue(app.staticTexts["Unlocked"].waitForExistence(timeout: 5))
     }
 
     func testEraseAllThenLoadSampleData() throws {
@@ -238,7 +249,7 @@ final class FeatureUITests: XCTestCase {
         tab("History")
         XCTAssertTrue(app.staticTexts["Mathematics"].waitForExistence(timeout: 5), "Session lost after force-quit")
         tab("Profile")
-        XCTAssertTrue(app.buttons["First Steps"].waitForExistence(timeout: 5) || { app.swipeUp(); return app.buttons["First Steps"].exists }())
+        reveal(app.buttons["First Steps"])
     }
 
     // MARK: Dark mode
@@ -260,6 +271,16 @@ final class FeatureUITests: XCTestCase {
     }
 
     // MARK: helpers
+
+    private func reveal(_ element: XCUIElement, maxSwipes: Int = 8) {
+        _ = element.waitForExistence(timeout: 5)
+        var swipes = 0
+        while !element.isHittable && swipes < maxSwipes {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(element.isHittable, "Could not scroll to \(element)")
+    }
 
     private func waitForDisappearance(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)

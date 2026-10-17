@@ -160,6 +160,16 @@ final class GameAndBackupTests: XCTestCase {
         XCTAssertEqual(try context.fetch(FetchDescriptor<Subject>()).count, 2)
     }
 
+    func testDeleteAllDataClearsEverything() throws {
+        try populate()
+        GameEngine.syncBadges(context: context)
+        XCTAssertTrue(context.deleteAllData())
+        XCTAssertEqual(try sessions().count, 0)
+        XCTAssertEqual(try goals().count, 0)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Subject>()).count, 0)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<UnlockedBadge>()).count, 0)
+    }
+
     func testDecodesVersion1Format() throws {
         let json = """
         {"version":1,"exportedAt":"2026-10-16T12:00:00Z",

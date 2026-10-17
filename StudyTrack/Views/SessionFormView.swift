@@ -122,6 +122,7 @@ struct SessionFormView: View {
                 Section("Notes") {
                     TextField("What did you cover?", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                        .accessibilityIdentifier("session.notes")
                 }
 
                 if editing != nil {
@@ -149,6 +150,7 @@ struct SessionFormView: View {
             }
             .confirmationDialog("Delete this session?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete session", role: .destructive, action: deleteSession)
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This also removes the XP it earned.")
             }
