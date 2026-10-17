@@ -1,26 +1,22 @@
 import SwiftData
 import SwiftUI
 
-/// The running state lives in `@AppStorage`, so the timer survives the app being
-/// backgrounded or killed — elapsed time is always derived from timestamps.
+/// Timer state lives in `TimerState`, is written to disk (fsync'd) on every change, and all time is
+/// derived from timestamps — so it survives backgrounding, the app being killed, and the phone
+/// being switched off and on again.
 struct TimerView: View {
     @Query(sort: \Subject.name) private var subjects: [Subject]
 
-    @AppStorage("timer.runStart") private var runStartTS: Double = 0
-    @AppStorage("timer.accumulated") private var accumulated: Double = 0
-    @AppStorage("timer.sessionStart") private var sessionStartTS: Double = 0
-    @AppStorage("timer.subject") private var subjectName: String = ""
-
+    @State private var state = TimerStore.load()
     @State private var subject: Subject?
     @State private var showingSave = false
     @State private var finishedDuration: TimeInterval = 0
 
-    private var isRunning: Bool { runStartTS > 0 }
-    private var hasProgress: Bool { isRunning || accumulated > 0 }
     private var tint: Color { subject?.color ?? .accentColor }
 
-    private func elapsed(at date: Date) -> TimeInterval {
-        accumulated + (isRunning ? max(date.timeIntervalSince1970 - runStartTS, 0) : 0)
+    private func update(_ change: (inout TimerState) -> Void) {
+        change(&state)
+        TimerStore.save(state)
     }
 
     var body: some View {
@@ -34,12 +30,12 @@ struct TimerView: View {
                 }
                 .pickerStyle(.menu)
                 .buttonStyle(.bordered)
-                .disabled(hasProgress)
+                .disabled(state.hasProgress)
 
                 Spacer()
 
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let value = elapsed(at: context.date)
+                    let value = state.elapsed(at: context.date)
                     ZStack {
                         ProgressRing(progress: value.truncatingRemainder(dividingBy: 3600) / 3600,
                                      tint: tint, lineWidth: 12)
@@ -48,7 +44,8 @@ struct TimerView: View {
                             Text(value.clock)
                                 .font(.system(size: 56, weight: .light, design: .rounded))
                                 .monospacedDigit()
-                            Text(isRunning ? "Focusing…" : (hasProgress ? "Paused" : "Ready"))
+                                .accessibilityIdentifier("timer.display")
+                            Text(state.isRunning ? "Focusing…" : (state.hasProgress ? "Paused" : "Ready"))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Label("+\(GameEngine.previewXP(seconds: value)) XP", systemImage: "bolt.fill")
@@ -64,15 +61,15 @@ struct TimerView: View {
                 Spacer()
 
                 HStack(spacing: 16) {
-                    Button(role: .destructive) { reset() } label: {
+                    Button(role: .destructive) { update { $0.reset() } } label: {
                         Label("Reset", systemImage: "arrow.counterclockwise")
                     }
                     .buttonStyle(.bordered)
-                    .disabled(!hasProgress)
+                    .disabled(!state.hasProgress)
 
                     Button { toggle() } label: {
-                        Label(isRunning ? "Pause" : (accumulated > 0 ? "Resume" : "Start"),
-                              systemImage: isRunning ? "pause.fill" : "play.fill")
+                        Label(state.isRunning ? "Pause" : (state.accumulated > 0 ? "Resume" : "Start"),
+                              systemImage: state.isRunning ? "pause.fill" : "play.fill")
                             .frame(minWidth: 110)
                     }
                     .buttonStyle(.borderedProminent)
@@ -83,48 +80,44 @@ struct TimerView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.green)
-                    .disabled(!hasProgress)
+                    .disabled(!state.hasProgress)
                 }
                 .controlSize(.large)
                 .padding(.bottom, 24)
             }
             .padding()
             .navigationTitle("Timer")
-            .sensoryFeedback(.impact, trigger: isRunning)
+            .sensoryFeedback(.impact, trigger: state.isRunning)
             .onAppear {
-                subject = subjects.first { $0.name == subjectName } ?? subjects.first
+                // Re-read from disk in case the view was recreated; restore the chosen subject.
+                state = TimerStore.load()
+                subject = subjects.first { $0.name == state.subjectName } ?? subjects.first
             }
-            .onChange(of: subject) { _, new in subjectName = new?.name ?? "" }
+            .onChange(of: subject) { _, new in
+                let name = new?.name ?? ""
+                if name != state.subjectName { update { $0.subjectName = name } }
+            }
             .sheet(isPresented: $showingSave) {
                 SessionFormView(subject: subject,
-                                date: sessionStartTS > 0 ? Date(timeIntervalSince1970: sessionStartTS) : .now,
+                                date: state.sessionStart ?? .now,
                                 duration: finishedDuration,
-                                onSaved: reset)
+                                onSaved: { update { $0.reset() } })
             }
         }
     }
 
     private func toggle() {
-        if isRunning {
-            accumulated = elapsed(at: .now)
-            runStartTS = 0
+        if state.isRunning {
+            update { $0.pause(at: .now) }
         } else {
-            if sessionStartTS == 0 { sessionStartTS = Date.now.timeIntervalSince1970 }
-            runStartTS = Date.now.timeIntervalSince1970
+            update { $0.start(at: .now) }
         }
     }
 
     private func finish() {
-        accumulated = elapsed(at: .now)
-        runStartTS = 0
-        finishedDuration = accumulated
+        update { $0.pause(at: .now) }
+        finishedDuration = state.accumulated
         showingSave = true
-    }
-
-    private func reset() {
-        runStartTS = 0
-        sessionStartTS = 0
-        accumulated = 0
     }
 }
 

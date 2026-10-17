@@ -30,7 +30,7 @@ struct SessionFormView: View {
         let total = max(Int(((session?.duration ?? duration) / 60).rounded()), 1)
         _subject = State(initialValue: session?.subject ?? subject)
         _date = State(initialValue: session?.startDate ?? date)
-        _hours = State(initialValue: min(total / 60, 12))
+        _hours = State(initialValue: min(total / 60, 24))
         _minutes = State(initialValue: total % 60)
         _focus = State(initialValue: session?.focus ?? 3)
         _notes = State(initialValue: session?.notes ?? "")
@@ -62,7 +62,7 @@ struct SessionFormView: View {
                 Section("Duration") {
                     HStack(spacing: 0) {
                         Picker("Hours", selection: $hours) {
-                            ForEach(0...12, id: \.self) { Text("\($0) h").tag($0) }
+                            ForEach(0...24, id: \.self) { Text("\($0) h").tag($0) }
                         }
                         .pickerStyle(.wheel)
                         .frame(maxWidth: .infinity)

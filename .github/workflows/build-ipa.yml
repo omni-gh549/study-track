@@ -25,6 +25,37 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Run unit + UI tests on the iPhone simulator
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          runtimes = sorted(k for k in devices if 'iOS' in k)
+          for key in reversed(runtimes):
+              for d in devices[key]:
+                  if d['name'].startswith('iPhone'):
+                      print(d['udid']); sys.exit(0)
+          sys.exit(1)")
+          echo "Using simulator $UDID"
+          mkdir -p screenshots
+          TEST_RUNNER_SCREENSHOT_DIR="$PWD/screenshots" xcodebuild test \
+            -project StudyTrack.xcodeproj \
+            -scheme StudyTrack \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | tail -n 80
+
+      - name: Upload test results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            screenshots
+            TestResults.xcresult
+            test.log
+
       - name: Build (unsigned, device SDK)
         run: |
           set -o pipefail

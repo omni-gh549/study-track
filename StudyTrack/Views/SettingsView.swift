@@ -118,7 +118,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Backup & restore")
                 } footer: {
-                    Text("\(lastBackupText) Save the file to iCloud Drive or Files — your data otherwise lives only on this phone, and deleting the app erases it.")
+                    Text("\(lastBackupText) Save the file to iCloud Drive — deleting the app erases everything on this phone. Automatic snapshots are also kept in Files › On My iPhone › StudyTrack › Backups.")
                 }
 
                 Section("Data") {
@@ -138,7 +138,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "0.3.0")
+                    LabeledContent("Version", value: "0.4.0")
                     Text("XP, levels and badges are calculated from your sessions, so editing or deleting a session updates them too.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -186,6 +186,7 @@ struct SettingsView: View {
             .confirmationDialog("Erase all subjects, sessions and goals?",
                                 isPresented: $confirmReset, titleVisibility: .visible) {
                 Button("Erase everything", role: .destructive) {
+                    AutoBackup.write(prefix: "pre-erase", context: context)
                     try? context.delete(model: StudySession.self)
                     try? context.delete(model: Goal.self)
                     try? context.delete(model: Subject.self)
@@ -202,6 +203,7 @@ struct SettingsView: View {
             set: { if !$0 { pendingRestore = nil } }
         ), titleVisibility: .visible, presenting: pendingRestore) { backup in
             Button("Replace with backup", role: .destructive) {
+                AutoBackup.write(prefix: "pre-restore", context: context)
                 backup.restore(into: context)
                 pendingRestore = nil
             }
