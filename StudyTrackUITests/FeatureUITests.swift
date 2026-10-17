@@ -85,8 +85,9 @@ final class FeatureUITests: XCTestCase {
         target.swipeLeft()
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.buttons["Delete session"].waitForExistence(timeout: 5), "Deleting must ask first")
-        app.buttons["Cancel"].tap()
-        XCTAssertTrue(target.exists, "Cancel must keep the session")
+        dismissDialogWithoutConfirming()
+        XCTAssertTrue(waitForDisappearance(app.buttons["Delete session"]), "Dialog should close")
+        XCTAssertTrue(target.exists, "Dismissing the dialog must keep the session")
 
         target.swipeLeft()
         app.buttons["Delete"].tap()
@@ -271,6 +272,16 @@ final class FeatureUITests: XCTestCase {
     }
 
     // MARK: helpers
+
+    /// iOS 26 shows confirmation dialogs as popovers (no Cancel button): tapping outside dismisses them.
+    private func dismissDialogWithoutConfirming() {
+        let cancel = app.buttons["Cancel"]
+        if cancel.exists {
+            cancel.tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
+        }
+    }
 
     private func reveal(_ element: XCUIElement, maxSwipes: Int = 8) {
         _ = element.waitForExistence(timeout: 5)
