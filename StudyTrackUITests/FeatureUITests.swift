@@ -192,7 +192,9 @@ final class FeatureUITests: XCTestCase {
         // Settings (nav bar button, always reachable)
         app.buttons["Settings"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Restore from backup…"].waitForExistence(timeout: 5))
+        let restore = app.buttons["Restore from backup…"]
+        reveal(restore)
+        XCTAssertTrue(restore.exists)
         app.buttons["Done"].tap()
 
         // Insights is further down the page.
@@ -214,20 +216,22 @@ final class FeatureUITests: XCTestCase {
         tab("Profile")
         app.buttons["Settings"].tap()
         let erase = app.buttons["Erase all data"]
-        XCTAssertTrue(erase.waitForExistence(timeout: 5))
+        reveal(erase)
         erase.tap()
         XCTAssertTrue(app.buttons["Erase everything"].waitForExistence(timeout: 5), "Erase must ask first")
         app.buttons["Erase everything"].tap()
 
         let load = app.buttons["Load sample data"]
-        XCTAssertTrue(load.waitForExistence(timeout: 5))
+        reveal(load)
         app.buttons["Done"].tap()
         tab("History")
         XCTAssertTrue(app.staticTexts["No sessions yet"].waitForExistence(timeout: 5))
 
         tab("Profile")
         app.buttons["Settings"].tap()
-        app.buttons["Load sample data"].tap()
+        let loadAgain = app.buttons["Load sample data"]
+        reveal(loadAgain)
+        loadAgain.tap()
         app.buttons["Done"].tap()
         tab("History")
         XCTAssertTrue(row(containing: "Integration by parts").waitForExistence(timeout: 5))
