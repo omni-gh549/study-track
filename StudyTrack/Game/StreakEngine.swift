@@ -73,13 +73,14 @@ enum StreakEngine {
         for (d, n) in giftsByDay where d < day { freezes = min(freezes + n, maxFreezes) }
 
         while day <= today {
-            if let gift = giftsByDay[day] { freezes = min(freezes + gift, maxFreezes) }
             if days.contains(day) {
+                if let gift = giftsByDay[day] { freezes = min(freezes + gift, maxFreezes) }
                 run += 1
                 best = max(best, run)
                 if run % daysPerFreeze == 0 { freezes = min(freezes + 1, maxFreezes) }
                 day = next(day)
             } else if day == today {
+                if let gift = giftsByDay[day] { freezes = min(freezes + gift, maxFreezes) }
                 break // today isn't over: not studying yet doesn't break anything
             } else {
                 var gap: [Date] = []
@@ -88,7 +89,8 @@ enum StreakEngine {
                     gap.append(d)
                     d = next(d)
                 }
-                // Walk the gap day by day: a gift arriving mid-gap can still save the streak.
+                // Walk the gap day by day: a gift arriving mid-gap (including on its first day) can still
+                // save the streak. Gifts on gap days are applied here and nowhere else, so none count twice.
                 var available = freezes
                 var covered = run > 0
                 for g in gap {
