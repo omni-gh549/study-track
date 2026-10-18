@@ -52,7 +52,7 @@ First launch shows an onboarding screen: pick your subjects, or explore with sam
 
 ## Updates
 
-Settings › App updates checks GitHub Releases (on launch, at most every 6 hours, or on demand). The repo is private, so it needs a **read-only fine-grained token** (Contents: read) that you paste once — it's kept in the Keychain. When a newer build exists, the Today tab shows a banner; **Download update** saves a safety backup, downloads the IPA, verifies its size and signature, then **Install update…** opens the share sheet so you can hand it to AltStore / SideStore / Sideloadly. iOS doesn't let an app install itself, so that last tap is unavoidable. Installing over the top keeps your data.
+Settings › App updates checks GitHub Releases (on launch, at most every 6 hours, or on demand). The repo is private, so it needs a **read-only fine-grained token** (Contents: read) that you paste once — it's kept in the Keychain. When a newer build exists, the Today tab shows a banner; **Download update** saves a safety backup, downloads the IPA, verifies its size and signature, then **Install update…** opens the share sheet so you can hand it to AltStore / SideStore / Sideloadly. iOS doesn't let an app install itself, so that last tap is unavoidable. Installing over the top keeps your data. **Save to Files…** puts the IPA wherever you choose (e.g. Downloads) — handy for LiveContainer, whose guest apps keep their files out of reach of the Files app.
 
 Each CI build stamps its run number into the app (`CFBundleVersion`) and the release tag (`vX.Y.Z-build.N`); the app compares those numbers.
 

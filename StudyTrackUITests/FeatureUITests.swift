@@ -289,6 +289,7 @@ final class FeatureUITests: XCTestCase {
         let install = app.buttons["Install update…"]
         reveal(install)
         XCTAssertTrue(install.waitForExistence(timeout: 10), "Install button should appear once downloaded")
+        XCTAssertTrue(app.buttons["Save to Files…"].exists, "Users need an easy way to save the IPA to Files")
     }
 
     func testUpdateBannerCanBeDismissed() throws {

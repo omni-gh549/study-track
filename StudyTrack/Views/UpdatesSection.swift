@@ -1,11 +1,33 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// Lets the downloaded installer be saved anywhere via the system file picker (e.g. Files › Downloads).
+struct IPADocument: FileDocument {
+    static var ipaType: UTType { UTType(filenameExtension: "ipa") ?? .data }
+    static var readableContentTypes: [UTType] { [ipaType] }
+
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 /// The "App updates" section of Settings.
 struct UpdatesSection: View {
     @Environment(UpdateService.self) private var updates
     @Environment(\.modelContext) private var context
     @State private var tokenInput = ""
+    @State private var exportDocument: IPADocument?
+    @State private var showingExporter = false
+    @State private var exportMessage: String?
 
     var body: some View {
         Section {
@@ -91,7 +113,27 @@ struct UpdatesSection: View {
             ShareLink(item: file) {
                 Label("Install update…", systemImage: "square.and.arrow.up")
             }
-            Text("Choose AltStore (or SideStore / Sideloadly) from the share sheet to install it.")
+            Button {
+                exportDocument = IPADocument(data: (try? Data(contentsOf: file)) ?? Data())
+                exportMessage = nil
+                showingExporter = true
+            } label: {
+                Label("Save to Files…", systemImage: "folder")
+            }
+            .fileExporter(isPresented: $showingExporter, document: exportDocument,
+                          contentType: IPADocument.ipaType,
+                          defaultFilename: file.deletingPathExtension().lastPathComponent) { result in
+                switch result {
+                case .success: exportMessage = "Saved. Open it from the Files app (the folder you picked)."
+                case .failure(let error): exportMessage = "Couldn't save: \(error.localizedDescription)"
+                }
+            }
+            if let exportMessage {
+                Text(exportMessage).font(.footnote).foregroundStyle(.secondary)
+            }
+            Text("File: \(file.lastPathComponent)")
+                .font(.footnote).foregroundStyle(.secondary)
+            Text("Install: choose AltStore / SideStore / Sideloadly from the share sheet. Using LiveContainer? Tap “Save to Files…” (pick Downloads), then in LiveContainer tap + and choose that file.")
                 .font(.footnote).foregroundStyle(.secondary)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
