@@ -10,6 +10,7 @@ struct SessionFormView: View {
     @Query private var allSessions: [StudySession]
     @Query private var goals: [Goal]
     @Query private var badges: [UnlockedBadge]
+    @Query private var freezeGrants: [FreezeGrant]
 
     private let editing: StudySession?
     private let onSaved: (() -> Void)?
@@ -179,7 +180,7 @@ struct SessionFormView: View {
 
         let storedBadges = Set(badges.map(\.badgeID))
         let existing = allSessions
-        let before = GameEngine.snapshot(sessions: existing, goals: goals, stored: storedBadges)
+        let before = GameEngine.snapshot(sessions: existing, goals: goals, stored: storedBadges, grants: freezeGrants)
 
         let session = StudySession(subject: subject, startDate: date, duration: totalSeconds,
                                    notes: cleaned, focus: focus)
@@ -191,7 +192,7 @@ struct SessionFormView: View {
         }
 
         let afterSessions = existing.filter { $0.persistentModelID != session.persistentModelID } + [session]
-        let after = GameEngine.snapshot(sessions: afterSessions, goals: goals, stored: storedBadges)
+        let after = GameEngine.snapshot(sessions: afterSessions, goals: goals, stored: storedBadges, grants: freezeGrants)
         GameEngine.syncBadges(context: context)
 
         onSaved?()

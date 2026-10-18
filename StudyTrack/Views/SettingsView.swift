@@ -37,6 +37,7 @@ struct SettingsView: View {
     @Query private var subjects: [Subject]
     @Query private var goals: [Goal]
     @Query private var badges: [UnlockedBadge]
+    @Query private var freezeGrants: [FreezeGrant]
 
     @AppStorage("dailyGoalMinutes") private var dailyGoalMinutes = 60
     @AppStorage("remindersOn") private var remindersOn = false
@@ -68,7 +69,7 @@ struct SettingsView: View {
     }
 
     private var backupDocument: BackupDocument {
-        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals, badges: badges)
+        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals, badges: badges, freezeGrants: freezeGrants)
         return BackupDocument(data: (try? file.encoded()) ?? Data(), filename: backupName)
     }
 
@@ -146,7 +147,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "0.6.0")
+                    LabeledContent("Version", value: "0.6.1")
                     Text("XP, levels and badges are calculated from your sessions, so editing or deleting a session updates them too.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

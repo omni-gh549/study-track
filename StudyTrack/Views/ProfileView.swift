@@ -5,13 +5,14 @@ struct ProfileView: View {
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
     @Query private var badges: [UnlockedBadge]
+    @Query private var freezeGrants: [FreezeGrant]
     @State private var showingSettings = false
     @State private var selected: AchievementDef?
 
-    private var streakInfo: StreakResult { GameEngine.streak(sessions: sessions) }
+    private var streakInfo: StreakResult { GameEngine.streak(sessions: sessions, grants: freezeGrants) }
 
     private var snapshot: GameSnapshot {
-        GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID)))
+        GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID)), grants: freezeGrants)
     }
 
     var body: some View {

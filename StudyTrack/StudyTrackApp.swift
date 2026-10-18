@@ -66,6 +66,7 @@ struct RootView: View {
                 SampleData.seed(context)
                 didOnboard = true
             }
+            FreezeGifts.applyPending(context: context)
             GameEngine.syncBadges(context: context)
             await updates.autoCheckIfDue()
             guard !didOnboard else { return }

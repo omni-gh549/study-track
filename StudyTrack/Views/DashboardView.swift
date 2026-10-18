@@ -8,6 +8,7 @@ struct DashboardView: View {
     @Environment(UpdateService.self) private var updates
     @AppStorage("dismissedUpdateBuild") private var dismissedUpdateBuild = 0
     @Query private var badges: [UnlockedBadge]
+    @Query private var freezeGrants: [FreezeGrant]
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
     @AppStorage("dailyGoalMinutes") private var fallbackDailyMinutes = 60
@@ -35,7 +36,7 @@ struct DashboardView: View {
         goals.first { $0.period == .daily && $0.subject == nil }?.targetMinutes ?? fallbackDailyMinutes
     }
 
-    private var streakInfo: StreakResult { GameEngine.streak(sessions: sessions) }
+    private var streakInfo: StreakResult { GameEngine.streak(sessions: sessions, grants: freezeGrants) }
     private var streak: Int { streakInfo.current }
 
     private struct DayPoint: Identifiable {
@@ -81,7 +82,7 @@ struct DashboardView: View {
                     if streakInfo.atRisk { streakRiskBanner }
                     if needsBackup { backupNudge }
                     todayCard
-                    LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID))).level, streak: streak)
+                    LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID)), grants: freezeGrants).level, streak: streak)
                     QuestsCard(sessions: sessions)
                     HStack(spacing: 12) {
                         StatTile(title: "Streak", value: "\(streak) \(streak == 1 ? "day" : "days")",

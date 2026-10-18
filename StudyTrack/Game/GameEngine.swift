@@ -139,8 +139,10 @@ enum GameEngine {
 
     // MARK: Streaks
 
-    static func streak(sessions: [StudySession], now: Date = .now) -> StreakResult {
-        StreakEngine.compute(studyDays: Set(sessions.map(\.startDate)), now: now)
+    static func streak(sessions: [StudySession], grants: [FreezeGrant] = [], now: Date = .now) -> StreakResult {
+        StreakEngine.compute(studyDays: Set(sessions.map(\.startDate)),
+                             grants: grants.map { FreezeGrantEvent(date: $0.grantedAt, count: $0.count) },
+                             now: now)
     }
 
     static func currentStreak(sessions: [StudySession]) -> Int { streak(sessions: sessions).current }
@@ -149,7 +151,7 @@ enum GameEngine {
 
     // MARK: Stats
 
-    static func stats(sessions: [StudySession], goals: [Goal]) -> PlayerStats {
+    static func stats(sessions: [StudySession], goals: [Goal], grants: [FreezeGrant] = []) -> PlayerStats {
         let cal = Calendar.current
         var s = PlayerStats()
         s.sessionCount = sessions.count
@@ -159,7 +161,7 @@ enum GameEngine {
         s.subjectCount = Set(sessions.compactMap { $0.subject?.persistentModelID }).count
         s.earlyBird = sessions.contains { cal.component(.hour, from: $0.startDate) < 8 }
         s.nightOwl = sessions.contains { cal.component(.hour, from: $0.startDate) >= 22 }
-        let streakInfo = streak(sessions: sessions)
+        let streakInfo = streak(sessions: sessions, grants: grants)
         s.currentStreak = streakInfo.current
         s.bestStreak = streakInfo.best
         s.freezes = streakInfo.freezes
@@ -175,8 +177,9 @@ enum GameEngine {
     }
 
     /// `stored` are badges already earned and persisted; they stay unlocked no matter what the data says now.
-    static func snapshot(sessions: [StudySession], goals: [Goal], stored: Set<String> = []) -> GameSnapshot {
-        let s = stats(sessions: sessions, goals: goals)
+    static func snapshot(sessions: [StudySession], goals: [Goal], stored: Set<String> = [],
+                         grants: [FreezeGrant] = []) -> GameSnapshot {
+        let s = stats(sessions: sessions, goals: goals, grants: grants)
         let derived = Set(achievements.filter { $0.isUnlocked(s) }.map(\.id))
         return GameSnapshot(stats: s, level: levelInfo(for: s.xp), unlocked: derived.union(stored))
     }
@@ -187,8 +190,9 @@ enum GameEngine {
         let sessions = (try? context.fetch(FetchDescriptor<StudySession>())) ?? []
         let goals = (try? context.fetch(FetchDescriptor<Goal>())) ?? []
         let existing = (try? context.fetch(FetchDescriptor<UnlockedBadge>())) ?? []
+        let grants = (try? context.fetch(FetchDescriptor<FreezeGrant>())) ?? []
         let stored = Set(existing.map(\.badgeID))
-        let missing = snapshot(sessions: sessions, goals: goals, stored: stored).unlocked.subtracting(stored)
+        let missing = snapshot(sessions: sessions, goals: goals, stored: stored, grants: grants).unlocked.subtracting(stored)
         guard !missing.isEmpty else { return }
         for id in missing { context.insert(UnlockedBadge(badgeID: id)) }
         context.commit()
@@ -253,5 +257,18 @@ final class CelebrationCenter {
     func dismiss(id: UUID? = nil) {
         guard id == nil || current?.id == id else { return }
         current = nil
+    }
+}
+
+/// One-off freezes handed out by the app. Each gift has a unique key so it is only ever given once.
+enum FreezeGifts {
+    static let twoFreezesKey = "gift-two-freezes-2026-10"
+
+    @MainActor
+    static func applyPending(context: ModelContext) {
+        let existing = (try? context.fetch(FetchDescriptor<FreezeGrant>())) ?? []
+        guard !existing.contains(where: { $0.key == twoFreezesKey }) else { return }
+        context.insert(FreezeGrant(key: twoFreezesKey, grantedAt: .now, count: 2, note: "Gift: two streak freezes"))
+        context.commit()
     }
 }

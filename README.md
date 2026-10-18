@@ -21,7 +21,7 @@ All derived from your sessions (so edits/deletes keep it consistent — no separ
 - **XP:** 1 per minute + 5 per session + 20% bonus for 4★/5★ focus + 25 per completed daily quest.
 - **Levels:** reach level *n* at `50·n·(n−1)` XP (100, 300, 600, 1000…), with titles from Newcomer to Grandmaster.
 - **Daily quests:** study 30 min · cover 2 subjects · log a sharp 15+ min session.
-- **Streak freezes:** every 7th consecutive study day earns a freeze (hold up to 2). Missing a day spends one automatically and the streak carries on; miss more days than you have freezes and the streak resets without wasting any. Frozen days show in blue on the heatmap. Computed from your history, so it always agrees with your sessions.
+- **Streak freezes:** every 7th consecutive study day earns a freeze (hold up to 2). Missing a day spends one automatically and the streak carries on; miss more days than you have freezes and the streak resets without wasting any. Frozen days show in blue on the heatmap. Freezes can also be granted outright (stored as `FreezeGrant` records, included in backups) — v0.6.1 gifts two. Computed from your history, so it always agrees with your sessions.
 - **Badges:** sessions, hours, streaks, marathon, laser focus, early bird / night owl, polymath, goal getter, saved-by-the-ice, rising star.
 - Saving a session shows an XP banner; level‑ups and new badges add confetti + haptics. The timer shows live XP.
 

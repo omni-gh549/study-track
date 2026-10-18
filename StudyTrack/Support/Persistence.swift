@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 enum Persistence {
-    static let schema = Schema([Subject.self, StudySession.self, Goal.self, UnlockedBadge.self])
+    static let schema = Schema([Subject.self, StudySession.self, Goal.self, UnlockedBadge.self, FreezeGrant.self])
 
     /// Opens the on-disk store. If it can't be opened (corruption, failed migration) the old files are
     /// moved aside — never deleted — and a fresh store is created, so the app always launches and the
@@ -83,9 +83,10 @@ enum AutoBackup {
         let sessions = (try? context.fetch(FetchDescriptor<StudySession>())) ?? []
         let goals = (try? context.fetch(FetchDescriptor<Goal>())) ?? []
         let badges = (try? context.fetch(FetchDescriptor<UnlockedBadge>())) ?? []
+        let freezeGrants = (try? context.fetch(FetchDescriptor<FreezeGrant>())) ?? []
         guard !(subjects.isEmpty && sessions.isEmpty && goals.isEmpty) else { return nil }
 
-        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals, badges: badges)
+        let file = BackupFile.make(subjects: subjects, sessions: sessions, goals: goals, badges: badges, freezeGrants: freezeGrants)
         guard let data = try? file.encoded() else { return nil }
         let fm = FileManager.default
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)

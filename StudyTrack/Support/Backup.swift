@@ -29,6 +29,13 @@ struct BackupFile: Codable {
         var createdAt: Date
     }
 
+    struct FreezeGrantDTO: Codable {
+        var key: String
+        var grantedAt: Date
+        var count: Int
+        var note: String
+    }
+
     struct BadgeDTO: Codable {
         var badgeID: String
         var unlockedAt: Date
@@ -44,7 +51,7 @@ struct BackupFile: Codable {
         }
     }
 
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     var version: Int
     var exportedAt: Date
@@ -53,9 +60,11 @@ struct BackupFile: Codable {
     var goals: [GoalDTO]
     /// Absent in version 1 backups.
     var badges: [BadgeDTO]?
+    /// Absent before version 3.
+    var freezeGrants: [FreezeGrantDTO]?
 
     static func make(subjects: [Subject], sessions: [StudySession], goals: [Goal],
-                     badges: [UnlockedBadge] = []) -> BackupFile {
+                     badges: [UnlockedBadge] = [], freezeGrants: [FreezeGrant] = []) -> BackupFile {
         var index: [PersistentIdentifier: Int] = [:]
         for (offset, subject) in subjects.enumerated() { index[subject.persistentModelID] = offset }
 
@@ -75,7 +84,8 @@ struct BackupFile: Codable {
                         subjectIndex: $0.subject.flatMap { index[$0.persistentModelID] },
                         createdAt: $0.createdAt)
             },
-            badges: badges.map { BadgeDTO(badgeID: $0.badgeID, unlockedAt: $0.unlockedAt) }
+            badges: badges.map { BadgeDTO(badgeID: $0.badgeID, unlockedAt: $0.unlockedAt) },
+            freezeGrants: freezeGrants.map { FreezeGrantDTO(key: $0.key, grantedAt: $0.grantedAt, count: $0.count, note: $0.note) }
         )
     }
 
@@ -134,8 +144,13 @@ struct BackupFile: Codable {
         for dto in badges ?? [] {
             context.insert(UnlockedBadge(badgeID: dto.badgeID, unlockedAt: dto.unlockedAt))
         }
+        for dto in freezeGrants ?? [] {
+            context.insert(FreezeGrant(key: dto.key, grantedAt: dto.grantedAt,
+                                       count: min(max(dto.count, 1), StreakEngine.maxFreezes), note: dto.note))
+        }
         // Deletion and re-insertion are committed together: either the whole restore applies or nothing does.
         guard context.commit() else { return false }
+        FreezeGifts.applyPending(context: context)
         GameEngine.syncBadges(context: context)
         return true
     }

@@ -23,6 +23,7 @@ extension ModelContext {
         for item in (try? fetch(FetchDescriptor<StudySession>())) ?? [] { delete(item) }
         for item in (try? fetch(FetchDescriptor<Goal>())) ?? [] { delete(item) }
         for item in (try? fetch(FetchDescriptor<UnlockedBadge>())) ?? [] { delete(item) }
+        for item in (try? fetch(FetchDescriptor<FreezeGrant>())) ?? [] { delete(item) }
         for item in (try? fetch(FetchDescriptor<Subject>())) ?? [] { delete(item) }
     }
 

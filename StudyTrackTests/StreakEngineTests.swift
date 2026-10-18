@@ -141,4 +141,67 @@ final class StreakEngineTests: XCTestCase {
         XCTAssertEqual(r.current, 10)
         XCTAssertTrue(r.frozenDays.isEmpty)
     }
+
+    // MARK: Granted freezes
+
+    private func computeWithGrants(_ daysAgo: [Int], grants: [(Int, Int)]) -> StreakResult {
+        StreakEngine.compute(studyDays: Set(daysAgo.map(day)),
+                             grants: grants.map { FreezeGrantEvent(date: day($0.0), count: $0.1) },
+                             now: now, calendar: cal)
+    }
+
+    func testGiftWithNoHistoryIsHeld() {
+        let r = computeWithGrants([], grants: [(0, 2)])
+        XCTAssertEqual(r.freezes, 2)
+        XCTAssertEqual(r.current, 0)
+        XCTAssertEqual(r.daysToNextFreeze, 0)
+    }
+
+    func testGiftIsCappedAtTwo() {
+        XCTAssertEqual(computeWithGrants([], grants: [(0, 2), (1, 2), (2, 5)]).freezes, 2)
+    }
+
+    func testGiftProtectsAMissedDay() {
+        // 3 days studied, miss yesterday, studied today; two freezes gifted on the first study day.
+        let r = computeWithGrants([5, 4, 3, 0], grants: [(5, 2)])
+        // days: 5,4,3 studied; 2,1 missed (2 days) -> both covered by the 2 gifted freezes; today studied.
+        XCTAssertEqual(r.current, 4)
+        XCTAssertEqual(r.frozenDays, [start(2), start(1)])
+        XCTAssertEqual(r.freezes, 0)
+    }
+
+    func testGiftBeforeHistoryStartsIsAvailableLater() {
+        let r = computeWithGrants([3, 2, 0], grants: [(10, 2)])   // gift long before first study day; missed 1 day
+        XCTAssertEqual(r.current, 3)
+        XCTAssertEqual(r.frozenDays, [start(1)])
+        XCTAssertEqual(r.freezes, 1)
+    }
+
+    func testGiftArrivingMidGapCanSaveTheStreak() {
+        // Studied 6,5,4 ago, missed 3 and 2 ago, studied yesterday and today.
+        let studied = [6, 5, 4, 1, 0]
+
+        // A single freeze can't cover two missed days: the streak resets, but the gift is not wasted.
+        let short = computeWithGrants(studied, grants: [(3, 1)])
+        XCTAssertEqual(short.current, 2)
+        XCTAssertTrue(short.frozenDays.isEmpty)
+        XCTAssertEqual(short.freezes, 1)
+
+        // Two freezes arriving on the first missed day bridge the gap.
+        let saved = computeWithGrants(studied, grants: [(3, 2)])
+        XCTAssertEqual(saved.current, 5)
+        XCTAssertEqual(saved.frozenDays, [start(3), start(2)])
+        XCTAssertEqual(saved.freezes, 0)
+    }
+
+    func testFutureGiftIsIgnored() {
+        XCTAssertEqual(computeWithGrants([0], grants: [(-3, 2)]).freezes, 0)
+    }
+
+    func testGiftTodayCoversNothingYetButIsHeld() {
+        let r = computeWithGrants([2, 1], grants: [(0, 2)])
+        XCTAssertEqual(r.current, 2)
+        XCTAssertEqual(r.freezes, 2)
+        XCTAssertTrue(r.atRisk)
+    }
 }

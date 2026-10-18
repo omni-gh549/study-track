@@ -15,6 +15,12 @@ struct StreakResult: Equatable {
     var atRisk: Bool { current > 0 && !studiedToday }
 }
 
+/// A freeze handed out on a particular day (not earned by studying).
+struct FreezeGrantEvent: Equatable {
+    var date: Date
+    var count: Int
+}
+
 /// Streaks with freezes, computed purely from the set of days you studied — so it always agrees with your
 /// history (edit or delete a session and everything recalculates) and is included in backups for free.
 ///
@@ -29,7 +35,8 @@ enum StreakEngine {
     static let daysPerFreeze = 7
     private static let maxLookbackDays = 3650
 
-    static func compute(studyDays: Set<Date>, now: Date = .now, calendar: Calendar = .current) -> StreakResult {
+    static func compute(studyDays: Set<Date>, grants: [FreezeGrantEvent] = [], now: Date = .now,
+                        calendar: Calendar = .current) -> StreakResult {
         let cal = calendar
         let today = cal.startOfDay(for: now)
         let days = Set(studyDays.map { cal.startOfDay(for: $0) })
@@ -41,8 +48,20 @@ enum StreakEngine {
         var result = StreakResult()
         result.studiedToday = days.contains(today)
 
+        // Granted freezes land at the start of their day (clamped to a sane count; future ones are ignored).
+        var giftsByDay: [Date: Int] = [:]
+        for g in grants where g.count > 0 {
+            let d = cal.startOfDay(for: g.date)
+            if d <= today { giftsByDay[d, default: 0] += min(g.count, maxFreezes) }
+        }
+
         let earliestAllowed = cal.date(byAdding: .day, value: -maxLookbackDays, to: today) ?? today
-        guard let first = days.filter({ $0 <= today }).min() else { return result }
+        guard let first = days.filter({ $0 <= today }).min() else {
+            // Nothing studied yet: any gifted freezes are simply waiting.
+            result.freezes = min(giftsByDay.values.reduce(0, +), maxFreezes)
+            result.daysToNextFreeze = result.freezes >= maxFreezes ? 0 : daysPerFreeze
+            return result
+        }
 
         var day = max(first, earliestAllowed)
         var run = 0
@@ -50,7 +69,11 @@ enum StreakEngine {
         var freezes = 0
         var frozen: [Date] = []
 
+        // Gifts from before your history starts are already in the inventory.
+        for (d, n) in giftsByDay where d < day { freezes = min(freezes + n, maxFreezes) }
+
         while day <= today {
+            if let gift = giftsByDay[day] { freezes = min(freezes + gift, maxFreezes) }
             if days.contains(day) {
                 run += 1
                 best = max(best, run)
@@ -65,12 +88,22 @@ enum StreakEngine {
                     gap.append(d)
                     d = next(d)
                 }
-                if run > 0 && freezes >= gap.count {
-                    freezes -= gap.count
+                // Walk the gap day by day: a gift arriving mid-gap can still save the streak.
+                var available = freezes
+                var covered = run > 0
+                for g in gap {
+                    available = min(available + (giftsByDay[g] ?? 0), maxFreezes)
+                    if covered && available > 0 { available -= 1 } else { covered = false }
+                }
+                if covered {
+                    freezes = available
                     frozen.append(contentsOf: gap)
                 } else {
                     run = 0
+                    let gapGifts = gap.reduce(0) { $0 + (giftsByDay[$1] ?? 0) }
+                    freezes = min(freezes + gapGifts, maxFreezes)
                 }
+                // Gifts on the skipped days were handled above; continue after the gap.
                 day = d
             }
         }

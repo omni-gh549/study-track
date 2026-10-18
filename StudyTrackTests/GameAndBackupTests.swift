@@ -169,6 +169,32 @@ final class GameAndBackupTests: XCTestCase {
         XCTAssertTrue(GameEngine.snapshot(sessions: try sessions(), goals: []).unlocked.contains("freeze"))
     }
 
+    func testGiftIsGrantedOnceAndSurvivesBackup() throws {
+        FreezeGifts.applyPending(context: context)
+        FreezeGifts.applyPending(context: context)
+        let grants = try context.fetch(FetchDescriptor<FreezeGrant>())
+        XCTAssertEqual(grants.count, 1)
+        XCTAssertEqual(grants.first?.count, 2)
+        XCTAssertEqual(GameEngine.streak(sessions: [], grants: grants).freezes, 2)
+
+        try populate()
+        let file = BackupFile.make(subjects: try context.fetch(FetchDescriptor<Subject>()),
+                                   sessions: try sessions(), goals: try goals(), freezeGrants: grants)
+        let other = try ModelContainer(for: Persistence.schema,
+                                       configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        try BackupFile.decode(try file.encoded()).restore(into: other.mainContext)
+        let restored = try other.mainContext.fetch(FetchDescriptor<FreezeGrant>())
+        XCTAssertEqual(restored.count, 1)   // restored once; applyPending didn't add a second
+        XCTAssertEqual(restored.first?.key, FreezeGifts.twoFreezesKey)
+    }
+
+    func testRestoreFromOlderBackupStillGetsTheGift() throws {
+        let json = #"{"version":2,"exportedAt":"2026-10-16T12:00:00Z","subjects":[],"sessions":[],"goals":[],"badges":[]}"#
+        try BackupFile.decode(Data(json.utf8)).restore(into: context)
+        let grants = try context.fetch(FetchDescriptor<FreezeGrant>())
+        XCTAssertEqual(grants.count, 1)
+    }
+
     func testDeleteAllDataClearsEverything() throws {
         try populate()
         GameEngine.syncBadges(context: context)

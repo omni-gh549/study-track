@@ -124,3 +124,20 @@ final class UnlockedBadge {
         self.unlockedAt = unlockedAt
     }
 }
+
+/// A freeze given to you (rather than earned by studying), e.g. a gift. Stored so it lands on a specific day
+/// of your history and is included in backups.
+@Model
+final class FreezeGrant {
+    var key: String = ""
+    var grantedAt: Date = Date()
+    var count: Int = 1
+    var note: String = ""
+
+    init(key: String, grantedAt: Date = .now, count: Int, note: String = "") {
+        self.key = key
+        self.grantedAt = grantedAt
+        self.count = count
+        self.note = note
+    }
+}
