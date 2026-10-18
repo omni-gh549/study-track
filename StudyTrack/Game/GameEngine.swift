@@ -9,6 +9,8 @@ struct PlayerStats {
     var sessionCount = 0
     var currentStreak = 0
     var bestStreak = 0
+    var freezes = 0
+    var freezesUsed = 0
     var longestSession: TimeInterval = 0
     var perfectFocusSessions = 0
     var subjectCount = 0
@@ -137,36 +139,13 @@ enum GameEngine {
 
     // MARK: Streaks
 
-    static func currentStreak(sessions: [StudySession]) -> Int {
-        let cal = Calendar.current
-        let days = Set(sessions.map { cal.startOfDay(for: $0.startDate) })
-        var day = cal.startOfDay(for: .now)
-        if !days.contains(day) { day = cal.date(byAdding: .day, value: -1, to: day) ?? day }
-        var count = 0
-        while days.contains(day) {
-            count += 1
-            day = cal.date(byAdding: .day, value: -1, to: day) ?? .distantPast
-        }
-        return count
+    static func streak(sessions: [StudySession], now: Date = .now) -> StreakResult {
+        StreakEngine.compute(studyDays: Set(sessions.map(\.startDate)), now: now)
     }
 
-    static func bestStreak(sessions: [StudySession]) -> Int {
-        let cal = Calendar.current
-        let days = Set(sessions.map { cal.startOfDay(for: $0.startDate) }).sorted()
-        var best = 0
-        var run = 0
-        var previous: Date?
-        for day in days {
-            if let p = previous, cal.date(byAdding: .day, value: 1, to: p) == day {
-                run += 1
-            } else {
-                run = 1
-            }
-            best = max(best, run)
-            previous = day
-        }
-        return best
-    }
+    static func currentStreak(sessions: [StudySession]) -> Int { streak(sessions: sessions).current }
+
+    static func bestStreak(sessions: [StudySession]) -> Int { streak(sessions: sessions).best }
 
     // MARK: Stats
 
@@ -180,8 +159,11 @@ enum GameEngine {
         s.subjectCount = Set(sessions.compactMap { $0.subject?.persistentModelID }).count
         s.earlyBird = sessions.contains { cal.component(.hour, from: $0.startDate) < 8 }
         s.nightOwl = sessions.contains { cal.component(.hour, from: $0.startDate) >= 22 }
-        s.currentStreak = currentStreak(sessions: sessions)
-        s.bestStreak = bestStreak(sessions: sessions)
+        let streakInfo = streak(sessions: sessions)
+        s.currentStreak = streakInfo.current
+        s.bestStreak = streakInfo.best
+        s.freezes = streakInfo.freezes
+        s.freezesUsed = streakInfo.frozenDays.count
         s.goalsCompleted = goals.filter { $0.target > 0 && $0.progress(in: sessions) >= $0.target }.count
 
         let byDay = Dictionary(grouping: sessions) { cal.startOfDay(for: $0.startDate) }
@@ -240,6 +222,8 @@ enum GameEngine {
                        symbol: "flame.fill", tint: .red) { (Double($0.bestStreak), 7) },
         AchievementDef(id: "streak30", title: "Unstoppable", detail: "Study 30 days in a row.",
                        symbol: "flame.fill", tint: .pink) { (Double($0.bestStreak), 30) },
+        AchievementDef(id: "freeze", title: "Saved by the Ice", detail: "A streak freeze protected your streak.",
+                       symbol: "snowflake", tint: .cyan) { (Double($0.freezesUsed), 1) },
         AchievementDef(id: "marathon", title: "Marathon", detail: "Complete a single 2 hour session.",
                        symbol: "figure.run", tint: .purple) { ($0.longestSession / 3600, 2) },
         AchievementDef(id: "laser", title: "Laser Focus", detail: "Log a 30+ minute session with 5★ focus.",

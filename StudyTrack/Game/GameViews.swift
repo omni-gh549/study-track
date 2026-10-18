@@ -185,3 +185,60 @@ struct QuestsCard: View {
         .card()
     }
 }
+
+// MARK: - Streak & freezes
+
+struct StreakCard: View {
+    let streak: StreakResult
+
+    private var explanation: String {
+        if streak.freezes >= StreakEngine.maxFreezes {
+            return "You're holding the maximum of \(StreakEngine.maxFreezes) freezes. One is used automatically if you miss a day."
+        }
+        let n = streak.daysToNextFreeze
+        return "Next freeze after \(n) more day\(n == 1 ? "" : "s") of studying in a row. One is used automatically if you miss a day."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Streak", systemImage: "flame.fill")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+                Spacer()
+                Text("\(streak.current) \(streak.current == 1 ? "day" : "days")")
+                    .font(.headline.monospacedDigit())
+            }
+            if streak.atRisk {
+                Label(streak.freezes > 0
+                      ? "Study today to extend it — a freeze will protect you if you miss."
+                      : "Study today to keep it alive — you have no freezes left.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+            Divider()
+            HStack {
+                Text("Streak freezes").font(.subheadline.weight(.semibold))
+                Spacer()
+                HStack(spacing: 6) {
+                    ForEach(0..<StreakEngine.maxFreezes, id: \.self) { i in
+                        Image(systemName: "snowflake")
+                            .font(.title3)
+                            .foregroundStyle(i < streak.freezes ? Color.cyan : Color.secondary.opacity(0.3))
+                    }
+                }
+            }
+            Text(explanation)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if !streak.frozenDays.isEmpty {
+                let recent = streak.frozenDays.suffix(3).map { $0.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) }
+                Text("Frozen days: " + recent.joined(separator: ", "))
+                    .font(.footnote)
+                    .foregroundStyle(.cyan)
+            }
+        }
+        .card()
+    }
+}

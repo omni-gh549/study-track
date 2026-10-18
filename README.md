@@ -21,7 +21,8 @@ All derived from your sessions (so edits/deletes keep it consistent — no separ
 - **XP:** 1 per minute + 5 per session + 20% bonus for 4★/5★ focus + 25 per completed daily quest.
 - **Levels:** reach level *n* at `50·n·(n−1)` XP (100, 300, 600, 1000…), with titles from Newcomer to Grandmaster.
 - **Daily quests:** study 30 min · cover 2 subjects · log a sharp 15+ min session.
-- **Badges:** sessions, hours, streaks, marathon, laser focus, early bird / night owl, polymath, goal getter, rising star.
+- **Streak freezes:** every 7th consecutive study day earns a freeze (hold up to 2). Missing a day spends one automatically and the streak carries on; miss more days than you have freezes and the streak resets without wasting any. Frozen days show in blue on the heatmap. Computed from your history, so it always agrees with your sessions.
+- **Badges:** sessions, hours, streaks, marathon, laser focus, early bird / night owl, polymath, goal getter, saved-by-the-ice, rising star.
 - Saving a session shows an XP banner; level‑ups and new badges add confetti + haptics. The timer shows live XP.
 
 Other features: timer survives app restarts, edit sessions & goals, daily reminder notification, CSV export, default daily goal, erase / load sample data.
@@ -48,6 +49,12 @@ First launch shows an onboarding screen: pick your subjects, or explore with sam
 - Deleting a subject keeps its sessions.
 - **Sideloading caveat:** deleting the app deletes its data. With a free Apple ID the install expires after 7 days — *refresh/re‑sign over the top* (AltStore does this automatically) rather than uninstalling, and keep the bundle ID (`com.studytrack.app`) unchanged.
 - iCloud sync needs a paid developer account (CloudKit entitlement), so it isn't enabled.
+
+## Updates
+
+Settings › App updates checks GitHub Releases (on launch, at most every 6 hours, or on demand). The repo is private, so it needs a **read-only fine-grained token** (Contents: read) that you paste once — it's kept in the Keychain. When a newer build exists, the Today tab shows a banner; **Download update** saves a safety backup, downloads the IPA, verifies its size and signature, then **Install update…** opens the share sheet so you can hand it to AltStore / SideStore / Sideloadly. iOS doesn't let an app install itself, so that last tap is unavoidable. Installing over the top keeps your data.
+
+Each CI build stamps its run number into the app (`CFBundleVersion`) and the release tag (`vX.Y.Z-build.N`); the app compares those numbers.
 
 ## Building the IPA
 

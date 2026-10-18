@@ -160,6 +160,15 @@ final class GameAndBackupTests: XCTestCase {
         XCTAssertEqual(try context.fetch(FetchDescriptor<Subject>()).count, 2)
     }
 
+    func testFreezeIsUsedAndUnlocksItsBadge() throws {
+        for d in 2...8 { add(nil, minutes: 20, daysAgo: d) }   // 7-day run earns a freeze
+        add(nil, minutes: 20, daysAgo: 0)                       // missed yesterday, studied today
+        let stats = GameEngine.stats(sessions: try sessions(), goals: [])
+        XCTAssertEqual(stats.freezesUsed, 1)
+        XCTAssertEqual(stats.currentStreak, 8)
+        XCTAssertTrue(GameEngine.snapshot(sessions: try sessions(), goals: []).unlocked.contains("freeze"))
+    }
+
     func testDeleteAllDataClearsEverything() throws {
         try populate()
         GameEngine.syncBadges(context: context)

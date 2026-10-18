@@ -10,8 +10,8 @@ final class FeatureUITests: XCTestCase {
     }
 
     private func launch(reset: Bool = true, seed: Bool = true, disk: Bool = false,
-                        arguments: [String] = []) {
-        var env: [String: String] = [:]
+                        arguments: [String] = [], extraEnv: [String: String] = [:]) {
+        var env: [String: String] = extraEnv
         if !disk { env["UITEST_INMEMORY"] = "1" }
         if reset { env["UITEST_RESET"] = "1" }
         if seed { env["UITEST_SEED"] = "1" }
@@ -251,6 +251,64 @@ final class FeatureUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Mathematics"].waitForExistence(timeout: 5), "Session lost after force-quit")
         tab("Profile")
         reveal(app.buttons["First Steps"])
+    }
+
+    // MARK: Streak freezes
+
+    func testStreakCardShowsFreezes() throws {
+        launch()
+        tab("Profile")
+        let title = app.staticTexts["Streak freezes"]
+        reveal(title)
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'freeze'")).count > 0)
+    }
+
+    // MARK: App updates
+
+    private func openSettingsFromProfile() {
+        tab("Profile")
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+    }
+
+    func testUpdateAvailableFlowFromBannerToInstallButton() throws {
+        launch(extraEnv: ["UITEST_UPDATE_MODE": "available"])
+        let banner = app.buttons["dashboard.updateBanner"]
+        XCTAssertTrue(banner.waitForExistence(timeout: 10), "Update banner should appear on Today")
+        banner.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+
+        let download = app.buttons["Download update"]
+        reveal(download)
+        download.tap()
+        let install = app.buttons["Install update…"]
+        reveal(install)
+        XCTAssertTrue(install.waitForExistence(timeout: 10), "Install button should appear once downloaded")
+    }
+
+    func testUpdateBannerCanBeDismissed() throws {
+        launch(extraEnv: ["UITEST_UPDATE_MODE": "available"])
+        XCTAssertTrue(app.buttons["dashboard.updateBanner"].waitForExistence(timeout: 10))
+        app.buttons["Dismiss update notice"].tap()
+        XCTAssertTrue(waitForDisappearance(app.buttons["dashboard.updateBanner"]))
+    }
+
+    func testUpToDateMessage() throws {
+        launch(extraEnv: ["UITEST_UPDATE_MODE": "current"])
+        openSettingsFromProfile()
+        let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'up to date'")).firstMatch
+        reveal(message)
+        XCTAssertTrue(message.exists)
+        XCTAssertFalse(app.buttons["dashboard.updateBanner"].exists)
+    }
+
+    func testUpdateCheckErrorIsExplained() throws {
+        launch(extraEnv: ["UITEST_UPDATE_MODE": "error"])
+        openSettingsFromProfile()
+        let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'token'")).firstMatch
+        reveal(message)
+        XCTAssertTrue(message.exists)
     }
 
     // MARK: Dark mode

@@ -33,6 +33,7 @@ struct StatTile: View {
     let value: String
     let systemImage: String
     let tint: Color
+    var subtitle: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -42,6 +43,11 @@ struct StatTile: View {
             Text(value)
                 .font(.title2.bold())
                 .contentTransition(.numericText())
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .card()
     }

@@ -74,6 +74,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             build | tee build.log | tail -n 40
 
       - name: Package IPA
@@ -102,8 +103,11 @@ jobs:
         run: |
           VERSION=$(grep -m1 MARKETING_VERSION project.yml | sed 's/.*"\(.*\)".*/\1/')
           TAG="v${VERSION}-build.${{ github.run_number }}"
+          # Release notes = the commit message (minus trailers); the app shows them in "App updates".
+          git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' > notes.txt || true
+          printf '\n---\nUnsigned IPA built from %s. Sign/sideload with AltStore, Sideloadly or similar.\n' "${{ github.sha }}" >> notes.txt
           gh release create "$TAG" StudyTrack.ipa \
             --target "${{ github.sha }}" \
             --title "StudyTrack ${VERSION} (build ${{ github.run_number }})" \
-            --notes "Unsigned IPA built from ${{ github.sha }}. Sign/sideload with AltStore, Sideloadly or similar." \
+            --notes-file notes.txt \
             --prerelease

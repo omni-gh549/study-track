@@ -26,6 +26,7 @@ struct RootView: View {
     @State private var tab: AppTab = .today
     @State private var celebrations = CelebrationCenter()
     @State private var timer = TimerModel()
+    @State private var updates = UpdateService()
 
     var body: some View {
         TabView(selection: $tab) {
@@ -48,6 +49,7 @@ struct RootView: View {
         .overlay { CelebrationOverlay(center: celebrations) }
         .environment(celebrations)
         .environment(timer)
+        .environment(updates)
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView {
                 didOnboard = true
@@ -65,6 +67,7 @@ struct RootView: View {
                 didOnboard = true
             }
             GameEngine.syncBadges(context: context)
+            await updates.autoCheckIfDue()
             guard !didOnboard else { return }
             let existing = (try? context.fetchCount(FetchDescriptor<Subject>())) ?? 0
             if existing == 0 { showOnboarding = true } else { didOnboard = true }
@@ -74,6 +77,7 @@ struct RootView: View {
             if phase == .active {
                 timer.reload()
                 GameEngine.syncBadges(context: context)
+                Task { await updates.autoCheckIfDue() }
             } else {
                 context.commit()
                 if phase == .background { AutoBackup.snapshotIfNeeded(context: context) }

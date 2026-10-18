@@ -8,6 +8,8 @@ struct ProfileView: View {
     @State private var showingSettings = false
     @State private var selected: AchievementDef?
 
+    private var streakInfo: StreakResult { GameEngine.streak(sessions: sessions) }
+
     private var snapshot: GameSnapshot {
         GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID)))
     }
@@ -26,11 +28,13 @@ struct ProfileView: View {
                                  systemImage: "flame.fill", tint: .orange)
                     }
 
+                    StreakCard(streak: streakInfo)
+
                     QuestsCard(sessions: sessions)
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Last 12 weeks").font(.headline)
-                        ActivityHeatmap(sessions: sessions)
+                        ActivityHeatmap(sessions: sessions, frozenDays: Set(streakInfo.frozenDays))
                     }
                     .card()
 
@@ -141,6 +145,7 @@ struct AchievementDetail: View {
 
 struct ActivityHeatmap: View {
     let sessions: [StudySession]
+    var frozenDays: Set<Date> = []
     private let weeks = 12
 
     var body: some View {
@@ -157,7 +162,7 @@ struct ActivityHeatmap: View {
                     ForEach(0..<7, id: \.self) { row in
                         let day = cal.date(byAdding: .day, value: col * 7 + row, to: start) ?? start
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(color(for: day > today ? nil : minutesByDay[day] ?? 0))
+                            .fill(frozenDays.contains(day) ? Color.cyan.opacity(0.55) : color(for: day > today ? nil : minutesByDay[day] ?? 0))
                             .aspectRatio(1, contentMode: .fit)
                     }
                 }

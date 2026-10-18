@@ -91,6 +91,8 @@ struct SettingsView: View {
                     Text("Used for the Today ring when you haven't created a daily goal.")
                 }
 
+                UpdatesSection()
+
                 Section("Reminders") {
                     Toggle("Daily reminder", isOn: $remindersOn)
                     if remindersOn {
@@ -144,7 +146,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "0.5.0")
+                    LabeledContent("Version", value: "0.6.0")
                     Text("XP, levels and badges are calculated from your sessions, so editing or deleting a session updates them too.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -217,5 +219,5 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView().modelContainer(PreviewData.container)
+    SettingsView().modelContainer(PreviewData.container).environment(UpdateService())
 }

@@ -5,6 +5,8 @@ import SwiftUI
 struct DashboardView: View {
     var openTimer: () -> Void = {}
     @Environment(TimerModel.self) private var timer
+    @Environment(UpdateService.self) private var updates
+    @AppStorage("dismissedUpdateBuild") private var dismissedUpdateBuild = 0
     @Query private var badges: [UnlockedBadge]
     @Query(sort: \StudySession.startDate, order: .reverse) private var sessions: [StudySession]
     @Query private var goals: [Goal]
@@ -33,7 +35,8 @@ struct DashboardView: View {
         goals.first { $0.period == .daily && $0.subject == nil }?.targetMinutes ?? fallbackDailyMinutes
     }
 
-    private var streak: Int { GameEngine.currentStreak(sessions: sessions) }
+    private var streakInfo: StreakResult { GameEngine.streak(sessions: sessions) }
+    private var streak: Int { streakInfo.current }
 
     private struct DayPoint: Identifiable {
         let id = UUID()
@@ -71,14 +74,20 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if case .available(let release) = updates.status, release.build != dismissedUpdateBuild {
+                        updateBanner(release)
+                    }
                     if timer.state.hasProgress { timerBanner }
+                    if streakInfo.atRisk { streakRiskBanner }
                     if needsBackup { backupNudge }
                     todayCard
                     LevelCard(info: GameEngine.snapshot(sessions: sessions, goals: goals, stored: Set(badges.map(\.badgeID))).level, streak: streak)
                     QuestsCard(sessions: sessions)
                     HStack(spacing: 12) {
                         StatTile(title: "Streak", value: "\(streak) \(streak == 1 ? "day" : "days")",
-                                 systemImage: "flame.fill", tint: .orange)
+                                 systemImage: "flame.fill", tint: .orange,
+                                 subtitle: streakInfo.freezes == 0 ? nil
+                                     : "❄︎ \(streakInfo.freezes) freeze\(streakInfo.freezes == 1 ? "" : "s")")
                         StatTile(title: "Last 7 days", value: weekTotal.studyDuration,
                                  systemImage: "calendar", tint: .indigo)
                     }
@@ -97,6 +106,55 @@ struct DashboardView: View {
             .sheet(isPresented: $showingAdd) { SessionFormView() }
             .sheet(isPresented: $showingSettings) { SettingsView() }
         }
+    }
+
+    private func updateBanner(_ release: ReleaseInfo) -> some View {
+        HStack(spacing: 12) {
+            Button { showingSettings = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Update available").font(.subheadline.weight(.semibold))
+                        Text("Version \(release.version) (build \(release.build)) — tap to download")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("dashboard.updateBanner")
+
+            Button { dismissedUpdateBuild = release.build } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss update notice")
+        }
+        .card()
+    }
+
+    private var streakRiskBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: streakInfo.freezes > 0 ? "snowflake" : "flame.fill")
+                .font(.title2)
+                .foregroundStyle(streakInfo.freezes > 0 ? Color.cyan : Color.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Keep your \(streakInfo.current)-day streak alive")
+                    .font(.subheadline.weight(.semibold))
+                Text(streakInfo.freezes > 0
+                     ? "Study today — or a freeze will cover you if you miss."
+                     : "Study today. You have no freezes left.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .card()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("dashboard.streakRisk")
     }
 
     private var timerBanner: some View {
@@ -225,5 +283,5 @@ struct DashboardView: View {
 }
 
 #Preview {
-    DashboardView().modelContainer(PreviewData.container).environment(TimerModel())
+    DashboardView().modelContainer(PreviewData.container).environment(TimerModel()).environment(UpdateService())
 }
