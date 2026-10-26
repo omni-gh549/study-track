@@ -110,19 +110,24 @@ struct TimerView: View {
     private var pomodoroHeader: some View {
         let per = max(state.config.blocksBeforeLongBreak, 1)
         let done = LiveActivityController.blocksDoneInCycle(state)
+        let capsule = Text(state.phase.title)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .background(tint.opacity(0.18), in: Capsule())
+            .foregroundStyle(tint)
+            .accessibilityIdentifier("timer.phase")
+        let blockText = Text(state.phase == .focus ? "Block \(done + 1) of \(per)" : "Block \(done) of \(per) done")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
         return VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Text(state.phase.title)
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(tint.opacity(0.18), in: Capsule())
-                    .foregroundStyle(tint)
-                    .accessibilityIdentifier("timer.phase")
-                Text(state.phase == .focus ? "Block \(done + 1) of \(per)" : "Block \(done) of \(per) done")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            // At very large text sizes the label drops below the capsule instead of squeezing it.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { capsule; blockText }
+                VStack(spacing: 6) { capsule; blockText }
             }
             HStack(spacing: 6) {
                 ForEach(0..<per, id: \.self) { i in
