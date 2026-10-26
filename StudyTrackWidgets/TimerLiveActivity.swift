@@ -31,7 +31,7 @@ private extension TimerActivityAttributes.ContentState.Kind {
     }
 }
 
-private func tint(_ attributes: TimerActivityAttributes, _ state: TimerActivityAttributes.ContentState) -> Color {
+private func activityColor(_ attributes: TimerActivityAttributes, _ state: TimerActivityAttributes.ContentState) -> Color {
     if state.isBreak { return .green }
     return SubjectColor(rawValue: attributes.subjectColor)?.color ?? .blue
 }
@@ -137,7 +137,7 @@ private struct LockScreenView: View {
     let isStale: Bool
 
     var body: some View {
-        let color = tint(attributes, state)
+        let color = activityColor(attributes, state)
         VStack(spacing: 10) {
             HStack(spacing: 12) {
                 SubjectIcon(attributes: attributes, color: color)
@@ -176,10 +176,10 @@ struct TimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TimerActivityAttributes.self) { context in
             LockScreenView(attributes: context.attributes, state: context.state, isStale: context.isStale)
-                .activityBackgroundTint(tint(context.attributes, context.state).opacity(0.18))
-                .activitySystemActionForegroundColor(tint(context.attributes, context.state))
+                .activityBackgroundTint(activityColor(context.attributes, context.state).opacity(0.18))
+                .activitySystemActionForegroundColor(activityColor(context.attributes, context.state))
         } dynamicIsland: { context in
-            let color = tint(context.attributes, context.state)
+            let color = activityColor(context.attributes, context.state)
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 8) {
