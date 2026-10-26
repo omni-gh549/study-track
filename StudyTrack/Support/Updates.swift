@@ -67,18 +67,23 @@ enum UpdateLogic {
     }
 
     /// Drafts, releases without an uploaded .ipa, and tags we can't understand are skipped.
-    static func releases(fromJSON data: Data) throws -> [ReleaseInfo] {
+    /// When a release has both editions, `preferLite` picks the one that matches what's installed
+    /// (the "lite" IPA has no app extensions and is what LiveContainer needs).
+    static func releases(fromJSON data: Data, preferLite: Bool = false) throws -> [ReleaseInfo] {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .iso8601
         let raw = try decoder.decode([GHRelease].self, from: data)
 
         return raw.compactMap { release in
+            let ipas = release.assets.filter {
+                $0.name.lowercased().hasSuffix(".ipa") && ($0.state ?? "uploaded") == "uploaded"
+            }
+            let lite = ipas.first { $0.name.lowercased().contains("lite") }
+            let full = ipas.first { !$0.name.lowercased().contains("lite") }
             guard !release.draft,
                   let parsed = parse(tag: release.tagName),
-                  let asset = release.assets.first(where: {
-                      $0.name.lowercased().hasSuffix(".ipa") && ($0.state ?? "uploaded") == "uploaded"
-                  }) else { return nil }
+                  let asset = preferLite ? (lite ?? full) : (full ?? lite) else { return nil }
             return ReleaseInfo(id: release.id, tag: release.tagName, version: parsed.version, build: parsed.build,
                                name: release.name ?? release.tagName, notes: release.body ?? "",
                                publishedAt: release.publishedAt, assetURL: asset.url, assetName: asset.name,
@@ -149,7 +154,9 @@ struct MockUpdateHTTP: UpdateHTTP {
           "body": "Mock release notes: faster everything.", "draft": false, "prerelease": true,
           "published_at": "2026-10-17T10:28:59Z", "html_url": "https://example.invalid/release",
           "assets": [{"id": 1, "name": "StudyTrack.ipa", "size": \(Self.payload.count),
-                      "url": "https://example.invalid/asset/1", "state": "uploaded"}]}]
+                      "url": "https://example.invalid/asset/1", "state": "uploaded"},
+                     {"id": 2, "name": "StudyTrack-lite.ipa", "size": \(Self.payload.count),
+                      "url": "https://example.invalid/asset/2", "state": "uploaded"}]}]
         """
         return (Data(json.utf8), response(for: request))
     }
@@ -190,19 +197,22 @@ final class UpdateService {
 
     let currentBuild: Int
     let currentVersion: String
+    var editionName: String { preferLite ? "Lite (no Live Activity)" : "Full" }
 
     private let http: UpdateHTTP
     private let tokenProvider: () -> String?
     private let updatesDirectory: URL
     private let repo: String
     private let isMocked: Bool
+    private let preferLite: Bool
 
     init(http: UpdateHTTP? = nil,
          tokenProvider: (() -> String?)? = nil,
          currentBuild: Int? = nil,
          currentVersion: String? = nil,
          updatesDirectory: URL? = nil,
-         repo: String = "omni-gh549/study-track") {
+         repo: String = "omni-gh549/study-track",
+         preferLite: Bool? = nil) {
         let mockMode = ProcessInfo.processInfo.environment["UITEST_UPDATE_MODE"]
         if let mockMode {
             self.http = MockUpdateHTTP(mode: mockMode)
@@ -217,6 +227,7 @@ final class UpdateService {
         self.currentBuild = currentBuild ?? Int(info?["CFBundleVersion"] as? String ?? "") ?? 0
         self.currentVersion = currentVersion ?? (info?["CFBundleShortVersionString"] as? String ?? "0")
         self.repo = repo
+        self.preferLite = preferLite ?? AppFlavor.isLite
         let docs = (try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
                                                  appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
@@ -271,7 +282,7 @@ final class UpdateService {
             Self.applyHeaders(&request, token: token, accept: "application/vnd.github+json")
             let (data, response) = try await http.data(for: request)
             try Self.validate(response)
-            let releases = try UpdateLogic.releases(fromJSON: data)
+            let releases = try UpdateLogic.releases(fromJSON: data, preferLite: preferLite)
 
             lastChecked = .now
             if !isMocked { UserDefaults.standard.set(Date.now.timeIntervalSince1970, forKey: Self.lastCheckedKey) }
@@ -308,7 +319,7 @@ final class UpdateService {
             let fm = FileManager.default
             try fm.createDirectory(at: updatesDirectory, withIntermediateDirectories: true)
             let destination = updatesDirectory
-                .appendingPathComponent("StudyTrack-\(release.version)-build\(release.build).ipa")
+                .appendingPathComponent("StudyTrack\(preferLite ? "-lite" : "")-\(release.version)-build\(release.build).ipa")
             try? fm.removeItem(at: destination)
             try fm.moveItem(at: temp, to: destination)
 

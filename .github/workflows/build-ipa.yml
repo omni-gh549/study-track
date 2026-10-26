@@ -52,13 +52,19 @@ jobs:
           grep -nE "error:|: failed|failed \(|XCTAssert|Fatal|Crash" test.log | head -120 || true
           xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>/dev/null | head -150 || true
 
-      - name: Upload test results and screenshots
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots
+
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: |
-            screenshots
             TestResults.xcresult
             test.log
 
@@ -77,18 +83,29 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             build | tee build.log | tail -n 40
 
-      - name: Package IPA
+      - name: Package IPAs (full + lite)
         run: |
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          # Full edition: includes the Live Activity extension.
           mkdir -p ipa/Payload
           cp -R "$APP" ipa/Payload/
           (cd ipa && zip -qry ../StudyTrack.ipa Payload)
-          ls -lh StudyTrack.ipa
+          # Lite edition: same app without app extensions, for LiveContainer (which can't run them).
+          mkdir -p ipa-lite/Payload
+          cp -R "$APP" ipa-lite/Payload/
+          rm -rf ipa-lite/Payload/*.app/PlugIns
+          (cd ipa-lite && zip -qry ../StudyTrack-lite.ipa Payload)
+          ls -lh StudyTrack.ipa StudyTrack-lite.ipa
+          # Guard rails: the full IPA must contain the extension, the lite one must not.
+          unzip -l StudyTrack.ipa | grep -q "\.appex/Info.plist"
+          if unzip -l StudyTrack-lite.ipa | grep -q "\.appex/"; then echo "lite IPA still has an extension"; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: StudyTrack-ipa
-          path: StudyTrack.ipa
+          path: |
+            StudyTrack.ipa
+            StudyTrack-lite.ipa
 
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -105,8 +122,8 @@ jobs:
           TAG="v${VERSION}-build.${{ github.run_number }}"
           # Release notes = the commit message (minus trailers); the app shows them in "App updates".
           git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' > notes.txt || true
-          printf '\n---\nUnsigned IPA built from %s. Sign/sideload with AltStore, Sideloadly or similar.\n' "${{ github.sha }}" >> notes.txt
-          gh release create "$TAG" StudyTrack.ipa \
+          printf '\n---\nUnsigned IPAs built from %s. StudyTrack.ipa = full (with Live Activity). StudyTrack-lite.ipa = no app extensions (use this one in LiveContainer).\n' "${{ github.sha }}" >> notes.txt
+          gh release create "$TAG" StudyTrack.ipa StudyTrack-lite.ipa \
             --target "${{ github.sha }}" \
             --title "StudyTrack ${VERSION} (build ${{ github.run_number }})" \
             --notes-file notes.txt \

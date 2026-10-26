@@ -316,6 +316,159 @@ final class FeatureUITests: XCTestCase {
         XCTAssertTrue(message.exists)
     }
 
+    // MARK: Pomodoro
+
+    /// One Pomodoro "minute" lasts a tenth of a second here, so a 25 min focus block is 2.5 s.
+    private let pomodoroEnv = ["UITEST_POMODORO_SECONDS_PER_MINUTE": "0.1", "UITEST_SKIP_NOTIFICATION_PROMPT": "1"]
+
+    private func openPomodoro(seed: Bool = true, reset: Bool = true) {
+        launch(reset: reset, seed: seed, extraEnv: pomodoroEnv)
+        tab("Timer")
+        XCTAssertTrue(app.staticTexts["timer.display"].waitForExistence(timeout: 5))
+        let pomodoro = app.buttons["Pomodoro"]
+        XCTAssertTrue(pomodoro.waitForExistence(timeout: 5))
+        pomodoro.tap()
+        XCTAssertTrue(app.staticTexts["timer.phase"].waitForExistence(timeout: 5))
+    }
+
+    func testPomodoroFullCycleFocusBreakFocusAndSave() throws {
+        openPomodoro()
+        XCTAssertEqual(app.staticTexts["timer.phase"].label, "Focus")
+        app.buttons["Start"].tap()
+
+        // Focus block (2.5 s) ends by itself and waits for us.
+        XCTAssertTrue(app.staticTexts["timer.phaseComplete"].waitForExistence(timeout: 10), "Phase should complete")
+        XCTAssertEqual(app.staticTexts["timer.phase"].label, "Short break")
+        let startBreak = app.buttons["Start break"]
+        XCTAssertTrue(startBreak.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Pause"].exists, "Timer must stop between phases")
+        XCTAssertTrue(app.buttons["Skip break"].exists)
+
+        startBreak.tap()
+        let startFocus = app.buttons["Start focus"]
+        XCTAssertTrue(startFocus.waitForExistence(timeout: 10), "Break should end by itself")
+        XCTAssertEqual(app.staticTexts["timer.phase"].label, "Focus")
+
+        startFocus.tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
+        app.buttons["Finish"].tap()
+
+        let save = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save'")).firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 5), "Finishing should offer to save the focus time")
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Session saved"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Start"].waitForExistence(timeout: 5), "Timer resets after saving")
+    }
+
+    func testPomodoroSkipBreak() throws {
+        openPomodoro()
+        app.buttons["Start"].tap()
+        XCTAssertTrue(app.buttons["Start break"].waitForExistence(timeout: 10))
+        app.buttons["Skip break"].tap()
+        XCTAssertTrue(app.buttons["Start focus"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["timer.phase"].label, "Focus")
+    }
+
+    func testPomodoroPauseAndStateSurviveRelaunch() throws {
+        openPomodoro()
+        app.buttons["Start"].tap()
+        sleep(1)
+        app.buttons["Pause"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
+        let shown = app.staticTexts["timer.display"].label
+
+        app.terminate()
+        launch(reset: false, seed: true, extraEnv: pomodoroEnv)
+        tab("Timer")
+        XCTAssertTrue(app.staticTexts["timer.phase"].waitForExistence(timeout: 5), "Should still be in Pomodoro mode")
+        XCTAssertTrue(app.buttons["Resume"].exists)
+        XCTAssertEqual(app.staticTexts["timer.display"].label, shown)
+    }
+
+    func testPomodoroPhaseThatEndedWhileAppWasClosedIsWaitingOnReturn() throws {
+        openPomodoro()
+        app.buttons["Start"].tap()
+        sleep(1)
+        app.terminate()
+        sleep(4)                                   // the 2.5 s focus block ends while the app is dead
+        launch(reset: false, seed: true, extraEnv: pomodoroEnv)
+        tab("Timer")
+        XCTAssertTrue(app.staticTexts["timer.phaseComplete"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Start break"].exists)
+    }
+
+    func testModeCannotChangeMidRunAndSettingsAreLocked() throws {
+        openPomodoro()
+        app.buttons["Start"].tap()
+        XCTAssertFalse(app.buttons["Stopwatch"].isEnabled, "Mode must be locked while a run is in progress")
+        app.buttons["Pomodoro Settings"].tap()
+        XCTAssertTrue(app.staticTexts["Finish or reset the current run to change these."].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+    }
+
+    func testPomodoroSettingsPresetsApply() throws {
+        openPomodoro()
+        app.buttons["Pomodoro Settings"].tap()
+        XCTAssertTrue(app.navigationBars["Pomodoro"].waitForExistence(timeout: 5))
+        app.buttons["Deep work · 50 / 10 / 30"].tap()
+        XCTAssertTrue(app.staticTexts["50 min"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+    }
+
+    func testTodayShowsPomodoroBannerAndOpensTimer() throws {
+        openPomodoro()
+        app.buttons["Start"].tap()
+        tab("Today")
+        let banner = app.buttons["dashboard.timerBanner"]
+        XCTAssertTrue(banner.waitForExistence(timeout: 5))
+        banner.tap()
+        XCTAssertTrue(app.staticTexts["timer.phase"].waitForExistence(timeout: 5))
+    }
+
+    func testTimerControlsFitOnScreen() throws {
+        // Regression: "Finish" overflowed its button. Every control must be fully on screen and tappable, at
+        // normal and at very large text sizes.
+        for size in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            launch(arguments: ["-UIPreferredContentSizeCategoryName", size], extraEnv: pomodoroEnv)
+            tab("Timer")
+            XCTAssertTrue(app.staticTexts["timer.display"].waitForExistence(timeout: 5))
+            app.buttons["Pomodoro"].tap()
+            app.buttons["Start"].tap()
+            let screen = app.windows.firstMatch.frame
+            for name in ["Pause", "Reset", "Finish"] {
+                let button = app.buttons[name]
+                XCTAssertTrue(button.waitForExistence(timeout: 5), "\(name) missing at \(size)")
+                if !button.isHittable { app.swipeUp() }
+                XCTAssertTrue(button.isHittable, "\(name) not reachable at \(size)")
+                XCTAssertLessThanOrEqual(button.frame.maxX, screen.maxX + 0.5, "\(name) overflows horizontally at \(size)")
+                XCTAssertGreaterThanOrEqual(button.frame.minX, screen.minX - 0.5, "\(name) overflows horizontally at \(size)")
+            }
+            app.terminate()
+        }
+    }
+
+    // MARK: Layout screenshots (looked at by a human)
+
+    func testLayoutScreenshots() throws {
+        for (label, size) in [("normal", "UICTContentSizeCategoryL"), ("xxl", "UICTContentSizeCategoryAccessibilityL")] {
+            launch(arguments: ["-UIPreferredContentSizeCategoryName", size], extraEnv: pomodoroEnv)
+            for name in ["Today", "Goals", "History", "Profile"] {
+                tab(name)
+                snapNamed("\(label)-\(name.lowercased())")
+            }
+            tab("Timer")
+            snapNamed("\(label)-timer-stopwatch")
+            app.buttons["Pomodoro"].tap()
+            snapNamed("\(label)-timer-pomodoro-ready")
+            app.buttons["Start"].tap()
+            sleep(1)
+            snapNamed("\(label)-timer-pomodoro-running")
+            XCTAssertTrue(app.buttons["Start break"].waitForExistence(timeout: 10))
+            snapNamed("\(label)-timer-pomodoro-break-waiting")
+            app.terminate()
+        }
+    }
+
     // MARK: Dark mode
 
     func testDarkModeScreens() throws {
@@ -335,6 +488,18 @@ final class FeatureUITests: XCTestCase {
     }
 
     // MARK: helpers
+
+    private func snapNamed(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let dir = ProcessInfo.processInfo.environment["SCREENSHOT_DIR"] {
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+        }
+    }
 
     /// iOS 26 shows confirmation dialogs as popovers (no Cancel button): tapping outside dismisses them.
     private func dismissDialogWithoutConfirming() {

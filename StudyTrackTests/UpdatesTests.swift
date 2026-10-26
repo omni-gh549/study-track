@@ -54,7 +54,7 @@ final class UpdatesTests: XCTestCase {
 
     private func service(_ http: StubHTTP, token: String? = "secret-token", build: Int = 5) -> UpdateService {
         UpdateService(http: http, tokenProvider: { token }, currentBuild: build, currentVersion: "0.1.0",
-                      updatesDirectory: dir, repo: "o/r")
+                      updatesDirectory: dir, repo: "o/r", preferLite: false)
     }
 
     private func jsonList(_ items: [String]) -> Data { Data("[\(items.joined(separator: ","))]".utf8) }
@@ -99,6 +99,37 @@ final class UpdatesTests: XCTestCase {
     func testGarbageJSONThrows() {
         XCTAssertThrowsError(try UpdateLogic.releases(fromJSON: Data("nope".utf8)))
         XCTAssertThrowsError(try UpdateLogic.releases(fromJSON: Data("{}".utf8)))
+    }
+
+    func testEditionPicksTheMatchingAsset() throws {
+        let assets = #"[{"id":1,"name":"StudyTrack.ipa","size":10,"url":"https://x.invalid/full","state":"uploaded"},{"id":2,"name":"StudyTrack-lite.ipa","size":20,"url":"https://x.invalid/lite","state":"uploaded"}]"#
+        let data = jsonList([releaseJSON(tag: "v1.0.0-build.7", assets: assets)])
+        let full = try XCTUnwrap(UpdateLogic.releases(fromJSON: data, preferLite: false).first)
+        let lite = try XCTUnwrap(UpdateLogic.releases(fromJSON: data, preferLite: true).first)
+        XCTAssertEqual(full.assetName, "StudyTrack.ipa")
+        XCTAssertEqual(lite.assetName, "StudyTrack-lite.ipa")
+        XCTAssertEqual(lite.assetSize, 20)
+    }
+
+    func testEditionFallsBackWhenOnlyTheOtherOneExists() throws {
+        let onlyFull = jsonList([releaseJSON(tag: "v1.0.0-build.7")])   // default asset: StudyTrack.ipa
+        XCTAssertEqual(try UpdateLogic.releases(fromJSON: onlyFull, preferLite: true).first?.assetName, "StudyTrack.ipa")
+        let liteAssets = #"[{"id":2,"name":"StudyTrack-lite.ipa","size":20,"url":"https://x.invalid/lite","state":"uploaded"}]"#
+        let onlyLite = jsonList([releaseJSON(tag: "v1.0.0-build.7", assets: liteAssets)])
+        XCTAssertEqual(try UpdateLogic.releases(fromJSON: onlyLite, preferLite: false).first?.assetName, "StudyTrack-lite.ipa")
+    }
+
+    func testLiteDownloadsAreNamedAsLite() async throws {
+        let http = StubHTTP()
+        http.releasesBody = jsonList([releaseJSON(tag: "v0.7.0-build.20")])
+        http.downloadData = zipMagic + Data(repeating: 7, count: 100)
+        let lite = UpdateService(http: http, tokenProvider: { "t" }, currentBuild: 5, currentVersion: "0.1.0",
+                                 updatesDirectory: dir, repo: "o/r", preferLite: true)
+        await lite.check()
+        guard case .available(let release) = lite.status else { return XCTFail("status: \(lite.status)") }
+        await lite.startDownload(release, context: nil)
+        guard case .ready(let file) = lite.download else { return XCTFail("download: \(lite.download)") }
+        XCTAssertEqual(file.lastPathComponent, "StudyTrack-lite-0.7.0-build20.ipa")
     }
 
     // MARK: Checking

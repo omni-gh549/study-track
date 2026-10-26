@@ -4,3 +4,4 @@ ipa/
 *.ipa
 xcuserdata/
 .DS_Store
+Config/*.plist

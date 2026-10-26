@@ -161,6 +161,98 @@ struct DashboardView: View {
     private var timerBanner: some View {
         Button(action: openTimer) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
+                let s = timer.state.resolved(at: context.date)
+                HStack(spacing: 12) {
+                    Image(systemName: s.isRunning ? (s.phase.isBreak && s.isPomodoro ? "cup.and.saucer.fill" : "timer")
+                                                  : (s.awaitingNext ? "bell.fill" : "pause.circle.fill"))
+                        .font(.title2)
+                        .foregroundStyle(s.isRunning ? Color.green : Color.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(bannerTitle(s)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(bannerDetail(s, now: context.date))
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text("Open").font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(.primary)
+            }
+            .card()
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard.timerBanner")
+    }
+
+    private func bannerTitle(_ s: TimerState) -> String {
+        if s.isPomodoro {
+            if s.awaitingNext { return s.phase == .focus ? "Break over" : "Focus block done" }
+            return s.isRunning ? s.phase.title : "\(s.phase.title) paused"
+        }
+        return s.isRunning ? "Timer running" : "Timer paused"
+    }
+
+    private func bannerDetail(_ s: TimerState, now: Date) -> String {
+        if s.isPomodoro {
+            if s.awaitingNext { return s.phase == .focus ? "Ready for the next block" : "Time for a break" }
+            return "\(s.phaseRemaining(at: now).rounded(.up).clock) left"
+        }
+        return s.elapsed(at: now).clock
+    }
+
+    private func updateBanner(_ release: ReleaseInfo) -> some View {
+        HStack(spacing: 12) {
+            Button { showingSettings = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Update available").font(.subheadline.weight(.semibold))
+                        Text("Version \(release.version) (build \(release.build)) — tap to download")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("dashboard.updateBanner")
+
+            Button { dismissedUpdateBuild = release.build } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss update notice")
+        }
+        .card()
+    }
+
+    private var streakRiskBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: streakInfo.freezes > 0 ? "snowflake" : "flame.fill")
+                .font(.title2)
+                .foregroundStyle(streakInfo.freezes > 0 ? Color.cyan : Color.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Keep your \(streakInfo.current)-day streak alive")
+                    .font(.subheadline.weight(.semibold))
+                Text(streakInfo.freezes > 0
+                     ? "Study today — or a freeze will cover you if you miss."
+                     : "Study today. You have no freezes left.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .card()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("dashboard.streakRisk")
+    }
+
+    private var timerBanner: some View {
+        Button(action: openTimer) {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack(spacing: 12) {
                     Image(systemName: timer.state.isRunning ? "timer" : "pause.circle.fill")
                         .font(.title2)

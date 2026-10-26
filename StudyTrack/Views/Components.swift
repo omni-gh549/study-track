@@ -40,9 +40,13 @@ struct StatTile: View {
             Label(title, systemImage: systemImage)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Text(value)
                 .font(.title2.bold())
                 .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             if let subtitle {
                 Text(subtitle)
                     .font(.caption)
@@ -76,6 +80,7 @@ struct SessionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.subject?.name ?? "No subject")
                     .font(.body.weight(.medium))
+                    .lineLimit(1)
                 Text(session.notes.isEmpty
                      ? session.startDate.formatted(date: .omitted, time: .shortened)
                      : session.notes)
@@ -88,6 +93,8 @@ struct SessionRow: View {
                 Text(session.duration.studyDuration)
                     .font(.body.weight(.semibold))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
                 HStack(spacing: 1) {
                     ForEach(1...5, id: \.self) { i in
                         Image(systemName: i <= session.focus ? "star.fill" : "star")

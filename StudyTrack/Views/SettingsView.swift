@@ -43,6 +43,8 @@ struct SettingsView: View {
     @AppStorage("remindersOn") private var remindersOn = false
     @AppStorage("reminderMinutes") private var reminderMinutes = 19 * 60
     @AppStorage("lastBackup") private var lastBackup: Double = 0
+    @AppStorage("liveActivityEnabled") private var liveActivityEnabled = true
+    @Environment(TimerModel.self) private var timerModel
 
     @State private var showingImporter = false
     @State private var pendingRestore: BackupFile?
@@ -90,6 +92,19 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("Used for the Today ring when you haven't created a daily goal.")
+                }
+
+                Section {
+                    Toggle("Live Activity", isOn: $liveActivityEnabled)
+                        .onChange(of: liveActivityEnabled) { _, _ in timerModel.refreshSideEffects() }
+                } header: {
+                    Text("Timer")
+                } footer: {
+                    Text(AppFlavor.hasLiveActivityExtension
+                         ? (LiveActivityController.isAvailable
+                            ? "Shows your running timer on the lock screen and in the Dynamic Island."
+                            : "Live Activities are turned off for StudyTrack in the iOS Settings app.")
+                         : "This is the lite edition (no app extensions), so there's no Live Activity. Install the full edition to get one.")
                 }
 
                 UpdatesSection()
@@ -147,7 +162,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "0.6.2")
+                    LabeledContent("Version", value: "0.7.0")
                     Text("XP, levels and badges are calculated from your sessions, so editing or deleting a session updates them too.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -220,5 +235,5 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView().modelContainer(PreviewData.container).environment(UpdateService())
+    SettingsView().modelContainer(PreviewData.container).environment(UpdateService()).environment(TimerModel())
 }

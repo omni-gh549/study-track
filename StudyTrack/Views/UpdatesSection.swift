@@ -32,6 +32,7 @@ struct UpdatesSection: View {
     var body: some View {
         Section {
             LabeledContent("Installed", value: "\(updates.currentVersion) (build \(updates.currentBuild))")
+            LabeledContent("Edition", value: updates.editionName)
             statusRows
 
             Button {
