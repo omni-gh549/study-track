@@ -40,7 +40,7 @@ struct StatTile: View {
             Label(title, systemImage: systemImage)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(tint)
-                .lineLimit(1)
+                .lineLimit(2)
                 .minimumScaleFactor(0.75)
             Text(value)
                 .font(.title2.bold())
