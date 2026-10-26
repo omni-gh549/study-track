@@ -437,7 +437,9 @@ final class FeatureUITests: XCTestCase {
         // Regression: "Finish" overflowed its button. Every control must be fully on screen and tappable, at
         // normal and at very large text sizes.
         for size in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXXXL"] {
-            launch(arguments: ["-UIPreferredContentSizeCategoryName", size], extraEnv: pomodoroEnv)
+            // Real-speed minutes: the focus block must not end while the layout is being checked.
+            launch(arguments: ["-UIPreferredContentSizeCategoryName", size],
+                   extraEnv: ["UITEST_POMODORO_SECONDS_PER_MINUTE": "60", "UITEST_SKIP_NOTIFICATION_PROMPT": "1"])
             tab("Timer")
             XCTAssertTrue(app.staticTexts["timer.display"].waitForExistence(timeout: 5))
             app.buttons["Pomodoro"].tap()
