@@ -411,7 +411,15 @@ final class FeatureUITests: XCTestCase {
         app.buttons["Pomodoro Settings"].tap()
         XCTAssertTrue(app.navigationBars["Pomodoro"].waitForExistence(timeout: 5))
         app.buttons["Deep work · 50 / 10 / 30"].tap()
-        XCTAssertTrue(app.staticTexts["50 min"].waitForExistence(timeout: 5))
+        // Steppers merge their label and value into one accessibility element, so match by substring on any type.
+        let focus = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'Focus' AND (label CONTAINS '50 min' OR value CONTAINS '50 min')"))
+            .firstMatch
+        let anyFifty = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS '50 min' OR value CONTAINS '50 min'"))
+            .firstMatch
+        XCTAssertTrue(focus.waitForExistence(timeout: 5) || anyFifty.waitForExistence(timeout: 5),
+                      "Deep work preset should set focus to 50 min.\n\(app.debugDescription)")
         app.buttons["Done"].tap()
     }
 
