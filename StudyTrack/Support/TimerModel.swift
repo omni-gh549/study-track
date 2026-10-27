@@ -9,6 +9,13 @@ final class TimerModel {
     private(set) var state: TimerState
     /// Bumped whenever a Pomodoro phase finishes while the app is in the foreground (drives haptics).
     private(set) var phaseCompletions = 0
+    /// True when the last attempt to write the timer to disk failed. The timer itself keeps working, but would
+    /// not survive the app being closed.
+    private(set) var persistenceFailing = false
+
+    /// One timer for the whole app. (`RootView` is re-created by SwiftUI now and then; a second model would
+    /// load, settle and write the file behind the live one's back.)
+    static let shared = TimerModel()
 
     @ObservationIgnored private var wakeTask: Task<Void, Never>?
 
@@ -21,10 +28,14 @@ final class TimerModel {
     /// Re-applies alerts and the Live Activity (e.g. after a setting changed).
     func refreshSideEffects() { scheduleSideEffects() }
 
-    /// Re-reads from disk (e.g. when the app returns to the foreground) and settles any finished phase.
+    /// Called when the app returns to the foreground: settles any phase that finished while away.
+    /// Memory is the source of truth while the app is alive — a copy from disk is only adopted when it is
+    /// strictly newer, so a stale or failed write can never wipe the running timer.
     func reload() {
-        state = TimerStore.load()
+        let disk = TimerStore.load()
+        if disk.revision > state.revision { state = disk }
         if settle() { phaseCompletions += 1 }
+        persist(state)            // self-heal if an earlier write failed
         scheduleSideEffects()
     }
 
@@ -32,8 +43,9 @@ final class TimerModel {
         var next = state
         next.resolve(at: .now)          // a phase that already ran out counts before the user's tap
         change(&next)
+        next.revision = state.revision &+ 1
         state = next
-        TimerStore.save(next)
+        persist(next)
         scheduleSideEffects()
     }
 
@@ -42,9 +54,15 @@ final class TimerModel {
     private func settle() -> Bool {
         let settled = state.resolved(at: .now)
         guard settled != state else { return false }
-        state = settled
-        TimerStore.save(settled)
+        var next = settled
+        next.revision = state.revision &+ 1
+        state = next
+        persist(next)
         return true
+    }
+
+    private func persist(_ value: TimerState) {
+        persistenceFailing = !TimerStore.save(value)
     }
 
     private func scheduleSideEffects() {

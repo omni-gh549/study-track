@@ -80,6 +80,9 @@ struct TimerState: Codable, Equatable {
     /// The previous phase finished; `phase` is the upcoming one, waiting to be started.
     var awaitingNext = false
     var phaseEndedAt: Date?
+    /// Bumped on every change made through `TimerModel`. Lets the app tell a newer copy of the state from an
+    /// older one, so a stale file on disk can never overwrite the live timer.
+    var revision = 0
 
     init(subjectName: String = "") {
         self.subjectName = subjectName
@@ -87,7 +90,7 @@ struct TimerState: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case accumulated, runStart, sessionStart, subjectName, subjectIcon, subjectColor
-        case mode, config, phase, phaseBase, completedBlocks, awaitingNext, phaseEndedAt
+        case mode, config, phase, phaseBase, completedBlocks, awaitingNext, phaseEndedAt, revision
     }
 
     /// Tolerant decoding: state files written by older versions (which lack the Pomodoro fields) must
@@ -107,6 +110,7 @@ struct TimerState: Codable, Equatable {
         completedBlocks = max(try c.decodeIfPresent(Int.self, forKey: .completedBlocks) ?? 0, 0)
         awaitingNext = try c.decodeIfPresent(Bool.self, forKey: .awaitingNext) ?? false
         phaseEndedAt = try c.decodeIfPresent(Date.self, forKey: .phaseEndedAt)
+        revision = max(try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0, 0)
     }
 
     // MARK: Derived
@@ -230,6 +234,8 @@ struct TimerState: Codable, Equatable {
 
 /// Persists `TimerState` to disk and forces it through to storage (fsync) on every change,
 /// so even an immediate power-off right after tapping Pause can't lose it.
+///
+/// The previous good copy is kept next to it (`.prev.json`) and used if the main file is ever unreadable.
 enum TimerStore {
     static var url: URL = {
         let base = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
@@ -238,38 +244,63 @@ enum TimerStore {
         return base.appendingPathComponent("timer-state.json")
     }()
 
-    static func load() -> TimerState {
-        guard let data = try? Data(contentsOf: url),
-              let state = try? JSONDecoder().decode(TimerState.self, from: data) else { return TimerState() }
-        return state
+    private static var previousURL: URL {
+        url.deletingLastPathComponent().appendingPathComponent("timer-state.prev.json")
     }
 
-    static func save(_ state: TimerState) {
-        do {
-            let data = try JSONEncoder().encode(state)
-            let fm = FileManager.default
-            let dir = url.deletingLastPathComponent()
-            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    static func load() -> TimerState {
+        for candidate in [url, previousURL] {
+            if let data = try? Data(contentsOf: candidate),
+               let state = try? JSONDecoder().decode(TimerState.self, from: data) { return state }
+        }
+        return TimerState()
+    }
 
-            let tmp = dir.appendingPathComponent(url.lastPathComponent + ".tmp")
+    /// Returns false when the state could not be written (the in-memory timer keeps working regardless).
+    @discardableResult
+    static func save(_ state: TimerState) -> Bool {
+        guard let data = try? JSONEncoder().encode(state) else { return false }
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+        do { try fm.createDirectory(at: dir, withIntermediateDirectories: true) } catch { return false }
+
+        if fm.fileExists(atPath: url.path) {
+            try? fm.removeItem(at: previousURL)
+            try? fm.copyItem(at: url, to: previousURL)
+        }
+        if writeDurably(data) && (try? Data(contentsOf: url)) == data { return true }
+        // Fallback for file systems that dislike the replace dance (e.g. some sideloading containers).
+        do {
+            try data.write(to: url, options: .atomic)
+            return (try? Data(contentsOf: url)) == data
+        } catch {
+            return false
+        }
+    }
+
+    private static func writeDurably(_ data: Data) -> Bool {
+        let fm = FileManager.default
+        let tmp = url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + ".tmp")
+        do {
             try? fm.removeItem(at: tmp)
-            guard fm.createFile(atPath: tmp.path, contents: nil) else { return }
+            guard fm.createFile(atPath: tmp.path, contents: nil) else { return false }
             let handle = try FileHandle(forWritingTo: tmp)
             try handle.write(contentsOf: data)
             try handle.synchronize()
             try handle.close()
-
             if fm.fileExists(atPath: url.path) {
                 _ = try fm.replaceItemAt(url, withItemAt: tmp)
             } else {
                 try fm.moveItem(at: tmp, to: url)
             }
+            return true
         } catch {
-            // Persistence is best-effort; the in-memory timer keeps working.
+            return false
         }
     }
 
     static func clear() {
         try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: previousURL)
     }
 }

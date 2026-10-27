@@ -25,7 +25,7 @@ struct RootView: View {
     @State private var showOnboarding = false
     @State private var tab: AppTab = .today
     @State private var celebrations = CelebrationCenter()
-    @State private var timer = TimerModel()
+    @State private var timer = TimerModel.shared
     @State private var updates = UpdateService()
 
     var body: some View {

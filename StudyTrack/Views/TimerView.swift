@@ -27,6 +27,15 @@ struct TimerView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
+                    if timer.persistenceFailing {
+                        Label("This device won't let StudyTrack save the timer. It keeps running, but keep the app open until you finish.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("timer.persistenceWarning")
+                    }
+
                     Picker("Mode", selection: modeBinding) {
                         ForEach(TimerMode.allCases) { Text($0.title).tag($0) }
                     }
