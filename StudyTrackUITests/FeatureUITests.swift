@@ -360,6 +360,49 @@ final class FeatureUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Start"].waitForExistence(timeout: 5), "Timer resets after saving")
     }
 
+    func testFinishAfterFiveBlocksSavesEveryFocusMinute() throws {
+        // Regression for: "did 4 Pomodoro blocks, stopped a minute into the 5th, and the log said 1 minute".
+        // 1 Pomodoro minute = 1 s here, so a block is 25 s, short break 5 s, long break 15 s.
+        let env = ["UITEST_POMODORO_SECONDS_PER_MINUTE": "1", "UITEST_SKIP_NOTIFICATION_PROMPT": "1"]
+        launch(reset: true, seed: true, disk: true, extraEnv: env)
+        tab("Timer")
+        app.buttons["Pomodoro"].tap()
+        XCTAssertTrue(app.staticTexts["timer.phase"].waitForExistence(timeout: 5))
+        app.buttons["Start"].tap()
+
+        for block in 1...4 {
+            let isLong = block == 4
+            XCTAssertTrue(app.buttons[isLong ? "Start break" : "Start break"].waitForExistence(timeout: 40),
+                          "Block \(block) should end by itself")
+            XCTAssertEqual(app.staticTexts["timer.phase"].label, isLong ? "Long break" : "Short break")
+            if block == 2 {                       // the app gets killed while waiting between phases
+                app.terminate()
+                launch(reset: false, seed: true, disk: true, extraEnv: env)
+                tab("Timer")
+                XCTAssertTrue(app.buttons["Start break"].waitForExistence(timeout: 5), "State lost over relaunch")
+            }
+            app.buttons["Start break"].tap()
+            XCTAssertTrue(app.buttons["Start focus"].waitForExistence(timeout: 30), "Break \(block) should end")
+            if block == 4 {                       // leave and come back, as you would during a long break
+                tab("Today"); tab("Timer")
+            }
+            app.buttons["Start focus"].tap()
+        }
+
+        // 5th block: run a few seconds, then Finish.
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
+        sleep(4)
+        app.buttons["Finish"].tap()
+
+        // Expect 4 x 25 s + ~4 s = ~104 "minutes of seconds" -> the form shows about 1 h 44 min... but with
+        // 1 s per minute that is 104 s = 2 min on the wheel. A lost history would show 0 h / 1 min.
+        let minutes = app.pickerWheels.element(boundBy: 1)
+        XCTAssertTrue(minutes.waitForExistence(timeout: 5), "Save sheet should appear")
+        let shown = (minutes.value as? String) ?? ""
+        let value = Int(shown.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? -1
+        XCTAssertGreaterThanOrEqual(value, 2, "Earlier focus blocks were dropped: minutes wheel shows '\(shown)'")
+    }
+
     func testPomodoroSkipBreak() throws {
         openPomodoro()
         app.buttons["Start"].tap()
