@@ -118,7 +118,12 @@ struct TimerView: View {
             .background(tint.opacity(0.18), in: Capsule())
             .foregroundStyle(tint)
             .accessibilityIdentifier("timer.phase")
-        let blockText = Text(state.phase == .focus ? "Block \(done + 1) of \(per)" : "Block \(done) of \(per) done")
+        // Running total, so the 5th block reads "Block 5" instead of wrapping back to "Block 1 of 4".
+        // The dots below show where you are within the current set.
+        let blockNumber = state.phase == .focus ? state.completedBlocks + 1 : state.completedBlocks
+        let setNumber = (max(blockNumber, 1) - 1) / per + 1
+        let blockLabel = state.phase == .focus ? "Block \(blockNumber)" : "Block \(blockNumber) done"
+        let blockText = Text(setNumber > 1 ? "\(blockLabel) · Set \(setNumber)" : blockLabel)
             .font(.footnote)
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -137,7 +142,7 @@ struct TimerView: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(done) of \(per) focus blocks done")
+            .accessibilityLabel("\(done) of \(per) focus blocks done in this set")
         }
     }
 

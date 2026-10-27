@@ -371,6 +371,26 @@ final class LiveActivityMappingTests: XCTestCase {
         XCTAssertEqual(c.blocksDone, 1)
     }
 
+    func testFinishingAfterMoreThanOneSetKeepsEveryFocusMinute() {
+        // 5 focus blocks (past the long break), each followed by its break, then 10 more minutes of block 6.
+        var s = TimerState(); s.mode = .pomodoro
+        var now = t0
+        for block in 1...5 {
+            s.start(at: now)
+            now = now.addingTimeInterval(1500); s.resolve(at: now)             // focus ends, waits
+            XCTAssertEqual(s.completedBlocks, block)
+            XCTAssertEqual(s.accumulated, Double(block) * 1500, accuracy: 0.001)
+            s.start(at: now)                                                   // break (short, or long after #4)
+            now = now.addingTimeInterval(block == 4 ? 900 : 300); s.resolve(at: now)
+            XCTAssertEqual(s.phase, .focus)
+        }
+        s.start(at: now)
+        now = now.addingTimeInterval(600)
+        s.pause(at: now)                                                       // what Finish does first
+        XCTAssertEqual(s.accumulated, 5 * 1500 + 600, accuracy: 0.001)        // never normalised back to one block
+        XCTAssertEqual(s.completedBlocks, 5)
+    }
+
     func testBlocksShownResetsForANewSet() {
         var s = TimerState(); s.mode = .pomodoro
         s.completedBlocks = 4; s.phase = .longBreak
