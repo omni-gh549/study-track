@@ -361,31 +361,34 @@ final class FeatureUITests: XCTestCase {
     }
 
     func testFinishAfterFiveBlocksSavesEveryFocusMinute() throws {
-        // Regression for: "did 4 Pomodoro blocks, stopped a minute into the 5th, and the log said 1 minute".
-        // 1 Pomodoro minute = 1 s here, so a block is 25 s, short break 5 s, long break 15 s.
+        // Regression for: "did 4 Pomodoro blocks, left the app (not swiped away) during phases, stopped a minute
+        // into the 5th, and the log said 1 minute". 1 Pomodoro minute = 1 s here: block 25 s, short break 5 s,
+        // long break 15 s.
         let env = ["UITEST_POMODORO_SECONDS_PER_MINUTE": "1", "UITEST_SKIP_NOTIFICATION_PROMPT": "1"]
         launch(reset: true, seed: true, disk: true, extraEnv: env)
         tab("Timer")
         app.buttons["Pomodoro"].tap()
         XCTAssertTrue(app.staticTexts["timer.phase"].waitForExistence(timeout: 5))
-        app.buttons["Start"].tap()
 
+        /// Leaves the app (home button, like switching away) for `seconds`, then comes back.
+        func leaveApp(for seconds: UInt32) {
+            XCUIDevice.shared.press(.home)
+            sleep(seconds)
+            app.activate()
+            XCTAssertTrue(app.tabBars.buttons["Timer"].waitForExistence(timeout: 10))
+            tab("Timer")
+        }
+
+        app.buttons["Start"].tap()
         for block in 1...4 {
-            let isLong = block == 4
-            XCTAssertTrue(app.buttons[isLong ? "Start break" : "Start break"].waitForExistence(timeout: 40),
-                          "Block \(block) should end by itself")
-            XCTAssertEqual(app.staticTexts["timer.phase"].label, isLong ? "Long break" : "Short break")
-            if block == 2 {                       // the app gets killed while waiting between phases
-                app.terminate()
-                launch(reset: false, seed: true, disk: true, extraEnv: env)
-                tab("Timer")
-                XCTAssertTrue(app.buttons["Start break"].waitForExistence(timeout: 5), "State lost over relaunch")
-            }
+            // Blocks 1 and 3: the app is in the background when the focus block ends.
+            if block == 1 || block == 3 { leaveApp(for: 28) }
+            XCTAssertTrue(app.buttons["Start break"].waitForExistence(timeout: 40), "Block \(block) should end by itself")
+            XCTAssertEqual(app.staticTexts["timer.phase"].label, block == 4 ? "Long break" : "Short break")
             app.buttons["Start break"].tap()
+            // Blocks 2 and 4: the app is in the background when the break ends.
+            if block == 2 || block == 4 { leaveApp(for: block == 4 ? 17 : 7) }
             XCTAssertTrue(app.buttons["Start focus"].waitForExistence(timeout: 30), "Break \(block) should end")
-            if block == 4 {                       // leave and come back, as you would during a long break
-                tab("Today"); tab("Timer")
-            }
             app.buttons["Start focus"].tap()
         }
 
@@ -394,8 +397,8 @@ final class FeatureUITests: XCTestCase {
         sleep(4)
         app.buttons["Finish"].tap()
 
-        // Expect 4 x 25 s + ~4 s = ~104 "minutes of seconds" -> the form shows about 1 h 44 min... but with
-        // 1 s per minute that is 104 s = 2 min on the wheel. A lost history would show 0 h / 1 min.
+        // 4 x 25 s + ~4 s = ~104 s, which is 2 on the minutes wheel at 1 s per "minute".
+        // A lost history would show 1.
         let minutes = app.pickerWheels.element(boundBy: 1)
         XCTAssertTrue(minutes.waitForExistence(timeout: 5), "Save sheet should appear")
         let shown = (minutes.value as? String) ?? ""
