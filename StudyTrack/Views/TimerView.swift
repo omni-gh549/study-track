@@ -1,6 +1,26 @@
 import SwiftData
 import SwiftUI
 
+/// Everything the save sheet needs, captured once at the moment Finish is tapped, so the sheet can never
+/// show a different (older or newer) timer than the one that was finished.
+struct FinishedRun: Identifiable {
+    let id = UUID()
+    let duration: TimeInterval
+    let start: Date
+    let summary: String
+
+    init(state: TimerState) {
+        duration = state.accumulated
+        start = state.sessionStart ?? Date.now.addingTimeInterval(-state.accumulated)
+        if state.isPomodoro {
+            let blocks = state.completedBlocks + (state.phase == .focus && state.phaseBase > 0 && !state.awaitingNext ? 1 : 0)
+            summary = "From your timer: \(blocks) focus block\(blocks == 1 ? "" : "s"), \(state.accumulated.studyDuration) of focus. Breaks aren't counted."
+        } else {
+            summary = "From your timer: \(state.accumulated.studyDuration)."
+        }
+    }
+}
+
 /// Timer state lives in `TimerModel` → `TimerState`, is written to disk (fsync'd) on every change, and all
 /// time is derived from timestamps — so it survives backgrounding, the app being killed, and the phone
 /// being switched off and on again. Works as a plain stopwatch or as a Pomodoro timer.
@@ -9,9 +29,8 @@ struct TimerView: View {
     @Query(sort: \Subject.name) private var subjects: [Subject]
 
     @State private var subject: Subject?
-    @State private var showingSave = false
+    @State private var finishedRun: FinishedRun?
     @State private var showingPomodoroSettings = false
-    @State private var finishedDuration: TimeInterval = 0
 
     private var state: TimerState { timer.state }
     private var tint: Color {
@@ -83,10 +102,11 @@ struct TimerView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingSave) {
+            .sheet(item: $finishedRun) { run in
                 SessionFormView(subject: subject,
-                                date: timer.state.sessionStart ?? .now,
-                                duration: finishedDuration,
+                                date: run.start,
+                                duration: run.duration,
+                                timerSummary: run.summary,
                                 onSaved: { timer.update { $0.reset() } })
             }
             .sheet(isPresented: $showingPomodoroSettings) { PomodoroSettingsView() }
@@ -280,11 +300,11 @@ struct TimerView: View {
 
     private func finish() {
         timer.update { $0.pause(at: .now) }
-        finishedDuration = timer.state.accumulated
-        if finishedDuration < 1 {
+        let snapshot = timer.state
+        if snapshot.accumulated < 1 {
             timer.update { $0.reset() }   // nothing studied, nothing to save
         } else {
-            showingSave = true
+            finishedRun = FinishedRun(state: snapshot)
         }
     }
 }

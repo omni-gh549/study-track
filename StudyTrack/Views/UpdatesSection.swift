@@ -1,22 +1,32 @@
 import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// Lets the downloaded installer be saved anywhere via the system file picker (e.g. Files › Downloads).
-struct IPADocument: FileDocument {
-    static var ipaType: UTType { UTType(filenameExtension: "ipa") ?? .data }
-    static var readableContentTypes: [UTType] { [ipaType] }
+struct ExportItem: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
 
-    var data: Data
+/// Saves a copy of the downloaded installer anywhere via the system file picker (e.g. Files › Downloads).
+/// It copies the real file, so the name (ending in .ipa) and every byte stay exactly as downloaded.
+struct IPAExporter: UIViewControllerRepresentable {
+    let file: URL
+    var onFinish: (_ saved: Bool) -> Void
 
-    init(data: Data) { self.data = data }
+    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
 
-    init(configuration: ReadConfiguration) throws {
-        data = configuration.file.regularFileContents ?? Data()
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forExporting: [file], asCopy: true)
+        picker.delegate = context.coordinator
+        return picker
     }
 
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: data)
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onFinish: (Bool) -> Void
+        init(onFinish: @escaping (Bool) -> Void) { self.onFinish = onFinish }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { onFinish(true) }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { onFinish(false) }
     }
 }
 
@@ -25,8 +35,7 @@ struct UpdatesSection: View {
     @Environment(UpdateService.self) private var updates
     @Environment(\.modelContext) private var context
     @State private var tokenInput = ""
-    @State private var exportDocument: IPADocument?
-    @State private var showingExporter = false
+    @State private var exportItem: ExportItem?
     @State private var exportMessage: String?
 
     var body: some View {
@@ -115,18 +124,15 @@ struct UpdatesSection: View {
                 Label("Install update…", systemImage: "square.and.arrow.up")
             }
             Button {
-                exportDocument = IPADocument(data: (try? Data(contentsOf: file)) ?? Data())
                 exportMessage = nil
-                showingExporter = true
+                exportItem = ExportItem(url: file)
             } label: {
                 Label("Save to Files…", systemImage: "folder")
             }
-            .fileExporter(isPresented: $showingExporter, document: exportDocument,
-                          contentType: IPADocument.ipaType,
-                          defaultFilename: file.deletingPathExtension().lastPathComponent) { result in
-                switch result {
-                case .success: exportMessage = "Saved. Open it from the Files app (the folder you picked)."
-                case .failure(let error): exportMessage = "Couldn't save: \(error.localizedDescription)"
+            .sheet(item: $exportItem) { item in
+                IPAExporter(file: item.url) { saved in
+                    exportItem = nil
+                    if saved { exportMessage = "Saved. Open it from the Files app (the folder you picked)." }
                 }
             }
             if let exportMessage {

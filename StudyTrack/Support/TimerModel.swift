@@ -21,8 +21,21 @@ final class TimerModel {
 
     init() {
         state = TimerStore.load()
+        if let seeded = Self.uiTestSeed() { state = seeded }
         _ = settle()
         scheduleSideEffects()
+    }
+
+    /// UI tests only: a timer that is already 4 Pomodoro blocks (25 min each) in, plus 1 minute into the 5th.
+    private static func uiTestSeed() -> TimerState? {
+        guard ProcessInfo.processInfo.environment["UITEST_TIMER_SEED"] == "fifth-block-running" else { return nil }
+        var s = TimerState()
+        s.mode = .pomodoro
+        s.accumulated = 4 * 1500
+        s.completedBlocks = 4
+        s.sessionStart = Date.now.addingTimeInterval(-3 * 3600)
+        s.runStart = Date.now.addingTimeInterval(-60)
+        return s
     }
 
     /// Re-applies alerts and the Live Activity (e.g. after a setting changed).

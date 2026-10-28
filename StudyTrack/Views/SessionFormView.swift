@@ -15,6 +15,7 @@ struct SessionFormView: View {
     private let editing: StudySession?
     private let onSaved: (() -> Void)?
     private let wasTrimmed: Bool
+    private let timerSummary: String?
 
     @State private var subject: Subject?
     @State private var date: Date
@@ -31,8 +32,10 @@ struct SessionFormView: View {
          subject: Subject? = nil,
          date: Date = .now,
          duration: TimeInterval = 3600,
+         timerSummary: String? = nil,
          onSaved: (() -> Void)? = nil) {
         editing = session
+        self.timerSummary = timerSummary
         self.onSaved = onSaved
         let raw = session?.duration ?? duration
         let safe = raw.isFinite ? max(raw, 0) : 0
@@ -95,6 +98,8 @@ struct SessionFormView: View {
                 } footer: {
                     if wasTrimmed {
                         Text("The timer ran for more than 24 hours, so it was trimmed. Adjust the duration if needed.")
+                    } else if let timerSummary {
+                        Text(timerSummary).accessibilityIdentifier("session.timerSummary")
                     }
                 }
 

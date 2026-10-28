@@ -406,6 +406,28 @@ final class FeatureUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(value, 2, "Earlier focus blocks were dropped: minutes wheel shows '\(shown)'")
     }
 
+    func testFinishPrefillsTheFullPomodoroTotalOverAnHour() throws {
+        // The reported case: 4 blocks of 25 min done, 1 minute into the 5th, tap Finish. The save sheet must
+        // already show 1 h 41 min (4 x 25 + 1), not 1 minute.
+        launch(reset: true, seed: true, extraEnv: ["UITEST_TIMER_SEED": "fifth-block-running",
+                                                  "UITEST_SKIP_NOTIFICATION_PROMPT": "1"])
+        tab("Timer")
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5), "Seeded timer should be running")
+        app.buttons["Finish"].tap()
+
+        let hours = app.pickerWheels.element(boundBy: 0)
+        let minutes = app.pickerWheels.element(boundBy: 1)
+        XCTAssertTrue(minutes.waitForExistence(timeout: 5), "Save sheet should appear")
+        func number(_ wheel: XCUIElement) -> Int {
+            Int(((wheel.value as? String) ?? "").components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? -1
+        }
+        XCTAssertEqual(number(hours), 1, "Hours wheel shows '\(hours.value ?? "?")'")
+        XCTAssertTrue((40...42).contains(number(minutes)), "Minutes wheel shows '\(minutes.value ?? "?")'")
+        let summary = app.staticTexts["session.timerSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 3), "The sheet should say where the duration came from")
+        XCTAssertTrue(summary.label.contains("5 focus blocks"), summary.label)
+    }
+
     func testPomodoroSkipBreak() throws {
         openPomodoro()
         app.buttons["Start"].tap()
